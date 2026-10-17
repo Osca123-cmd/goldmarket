@@ -246,6 +246,51 @@ export function useNotifications() {
   }, 30000);
 }
 
+export interface NewsRow {
+  id: string;
+  title: string;
+  link: string;
+  source: string;
+  published_at: string | null;
+  snippet: string;
+  label: "bullish" | "bearish" | "neutral";
+  confidence: "rendah" | "sedang";
+  conflict: boolean;
+  rule_ids: string[];
+  reasons: string[];
+  explanation: string;
+  created_at: string;
+}
+
+export interface EconEventRow {
+  event_key: string;
+  title: string;
+  country: string;
+  impact: "High" | "Medium" | "Low" | "Holiday";
+  time_at: string;
+  forecast: string | null;
+  previous: string | null;
+  fetched_at: string;
+}
+
+export function useNews(limit = 60) {
+  return useLive<NewsRow[]>(`news:${limit}`, "news_items", async () => {
+    const { data, error } = await supabase().from("news_items").select("*").order("published_at", { ascending: false, nullsFirst: false }).limit(limit);
+    if (error) throw error;
+    return (data ?? []) as NewsRow[];
+  }, 120000);
+}
+
+/** Event kalender ekonomi dari 1 hari lalu ke depan (urut waktu). */
+export function useEconEvents() {
+  return useLive<EconEventRow[]>("econ", "econ_events", async () => {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const { data, error } = await supabase().from("econ_events").select("*").gte("time_at", since).order("time_at").limit(200);
+    if (error) throw error;
+    return (data ?? []) as EconEventRow[];
+  }, 300000);
+}
+
 export async function fetchCandles(source: string, tf: Timeframe, limit = 500): Promise<Candle[]> {
   const { data, error } = await supabase()
     .from("market_candles")

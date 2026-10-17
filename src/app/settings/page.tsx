@@ -48,6 +48,7 @@ const schema = z
     tp2_pips: pos,
     tp3_pips: pos,
     near_entry_pips: pos.max(1000),
+    news_alert_minutes: z.number().int().min(5).max(240),
     notify_cooldown_min: z.number().int().min(0).max(1440),
     min_score_m15: z.number().int().min(0).max(100),
     min_score_h1: z.number().int().min(0).max(100),
@@ -62,6 +63,7 @@ const KINDS: [string, string][] = [
   ["invalid", "Setup invalid"],
   ["expired", "Setup kedaluwarsa"],
   ["connection", "Gangguan koneksi data"],
+  ["news_event", "News besar (USD) sebentar lagi"],
 ];
 
 function SettingsPage() {
@@ -109,6 +111,7 @@ function SettingsPage() {
       tp2_pips: n("tp2_pips"),
       tp3_pips: n("tp3_pips"),
       near_entry_pips: n("near_entry_pips"),
+      news_alert_minutes: n("news_alert_minutes"),
       notify_cooldown_min: n("notify_cooldown_min"),
       min_score_m15: n("min_score_m15"),
       min_score_h1: n("min_score_h1"),
@@ -189,6 +192,7 @@ function SettingsPage() {
       <Card title="Notifikasi">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {inp("near_entry_pips", "Ambang mendekati entry (pips)")}
+          {inp("news_alert_minutes", "Peringatan news besar (menit sebelum)", "5–240 menit")}
           {inp("notify_cooldown_min", "Cooldown peringatan (menit)")}
           {inp("min_score_m15", "Skor minimum M15")}
           {inp("min_score_h1", "Skor minimum H1")}

@@ -59,3 +59,9 @@ Bug yang ditemukan & diperbaiki selama pengujian:
 - Uji UI ulang (desktop + mobile): tanpa scroll horizontal & tanpa error JS.
 - Bug ditemukan & diperbaiki: sinyal "Entry tersentuh" yang hasilnya sudah final masih dianggap aktif → kini aktif hanya jika belum tersentuh atau hasil masih OPEN.
 - Push end-to-end ke HP tidak dapat diuji dari lingkungan build (layanan push vendor diblokir jaringan); gunakan tombol **Uji push dari server** di aplikasi.
+
+## News AI (2026-10-17)
+
+- `tests/news.test.ts`: parser RSS (Google News, Investing.com, CDATA, entitas ganda, tautan non-http ditolak), dedupe lintas sumber, gerbang relevansi, klasifikasi (bullish/bearish/netral, negasi, konflik, keyakinan), kalender ForexFactory (filter USD High/Medium, tanpa field actual), jendela peringatan.
+- Produksi: mode `news` sukses dengan embedding `gte-small` aktif; Investing.com terbaca, Google News kadang HTTP 503 dari server Edge (dilewati otomatis); kalender 11 event USD tersimpan.
+- `scripts/ui-smoke.ts` mencakup `/news/` (desktop & mobile, tanpa scroll horizontal).

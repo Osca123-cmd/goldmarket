@@ -7,7 +7,8 @@ import { SessionsCard } from "@/components/SessionsCard";
 import { SetupCard } from "@/components/SetupCard";
 import { Card, Disclaimer, Empty, Stat, StatusBadge, ago, cx, fmt, fmtTime, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus, isActiveSignal } from "@/lib/market";
+import { effectiveStatus, isActiveSignal, useEconEvents } from "@/lib/market";
+import { NextEvent } from "@/components/NextEvent";
 import { ANALYSIS_STATUS_LABEL } from "@/core/analysis";
 
 export default function DashboardPage() {
@@ -28,9 +29,16 @@ function Dashboard() {
   const status = effectiveStatus(snapshot, now);
   const up = (snapshot?.day_change ?? 0) >= 0;
   const active = setups.filter((s) => s.eligible && isActiveSignal(s) && s.score >= (settings?.min_score?.[s.timeframe] ?? 60));
+  const { data: events } = useEconEvents();
+  const nextEvent = (events ?? []).find((e) => e.impact === "High" && Date.parse(e.time_at) > now) ?? null;
 
   return (
     <div className="space-y-4">
+      {nextEvent && Date.parse(nextEvent.time_at) - now <= 24 * 3600 * 1000 && (
+        <Link href="/news/" className="block">
+          <NextEvent ev={nextEvent} now={now} tz={tz} />
+        </Link>
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2" title="XAUUSD" action={<StatusBadge status={status} />}>
           <div className="flex flex-wrap items-end gap-x-4 gap-y-1">

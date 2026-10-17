@@ -26,6 +26,7 @@ export interface UserSettings {
   tp2_pips: number;
   tp3_pips: number;
   near_entry_pips: number;
+  news_alert_minutes: number;
   notify_cooldown_min: number;
   min_score: Record<string, number>;
   notify_kinds: Record<string, boolean>;
@@ -54,9 +55,10 @@ export const DEFAULT_SETTINGS: Omit<UserSettings, "user_id"> = {
   tp2_pips: 100,
   tp3_pips: 150,
   near_entry_pips: 20,
+  news_alert_minutes: 30,
   notify_cooldown_min: 15,
   min_score: { M15: 60, H1: 60 },
-  notify_kinds: { new_setup: true, near_entry: true, confirmed: true, invalid: true, expired: true, connection: true, entry_touched: true },
+  notify_kinds: { new_setup: true, near_entry: true, confirmed: true, invalid: true, expired: true, connection: true, entry_touched: true, signal_result: true, news_event: true },
   browser_push: false,
   starting_balance: null,
 };
@@ -64,7 +66,7 @@ export const DEFAULT_SETTINGS: Omit<UserSettings, "user_id"> = {
 const NUMERIC_KEYS: (keyof UserSettings)[] = [
   "pip_size", "tick_size", "digits", "contract_size", "lot_step", "min_lot", "max_lot", "commission_per_lot",
   "quote_to_account_rate", "account_balance", "risk_percent", "default_spread_pips", "sl_pips", "tp1_pips",
-  "tp2_pips", "tp3_pips", "near_entry_pips", "notify_cooldown_min",
+  "tp2_pips", "tp3_pips", "near_entry_pips", "news_alert_minutes", "notify_cooldown_min",
 ];
 
 function normalize(row: Record<string, unknown>): UserSettings {

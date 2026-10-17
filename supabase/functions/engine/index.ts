@@ -639,6 +639,10 @@ const NEWS_FEEDS = [
   { id: "gnews_macro", label: "Google News", url: "https://news.google.com/rss/search?q=%22gold%22+%28Fed+OR+dollar+OR+yields+OR+inflation%29+when:1d&hl=en-US&gl=US&ceid=US:en" },
   { id: "inv_commodities", label: "Investing.com", url: "https://www.investing.com/rss/news_11.rss" },
   { id: "inv_economy", label: "Investing.com", url: "https://www.investing.com/rss/news_14.rss" },
+  { id: "inv_forex", label: "Investing.com", url: "https://www.investing.com/rss/news_1.rss" },
+  { id: "fed_press", label: "Federal Reserve", url: "https://www.federalreserve.gov/feeds/press_all.xml" },
+  { id: "cnbc_economy", label: "CNBC", url: "https://www.cnbc.com/id/20910258/device/rss/rss.html" },
+  { id: "mw_top", label: "MarketWatch", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories" },
 ];
 const FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 const NEWS_MAX_AGE_SEC = 48 * 3600;

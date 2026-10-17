@@ -14,6 +14,7 @@ import { TF_SECONDS, type Timeframe } from "../src/core/types.ts";
 import { barOverlapsMarket, demoCandle } from "../src/core/providers.ts";
 import { evaluateOutcome } from "../src/core/outcome.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
+import { classifyGoldImpact, explainImpact } from "../src/core/news.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const OUT = process.env.SHOT_DIR ?? join(ROOT, "docs/screenshots");
@@ -97,6 +98,23 @@ const fixtures: Record<string, unknown> = {
   user_alerts: [],
   journal_events: [],
   journal_attachments: [],
+  // News AI: judul contoh diklasifikasi oleh aturan yang sama dengan engine; waktu relatif ke jam browser
+  news_items: [
+    ["Gold Price Slides on Hot Inflation, but Schiff Says It's a Gift", "Yahoo Finance", 12],
+    ["Gold prices slip for the week as oil gains offset weaker dollar, U.S. bond rally", "Investing.com", 95],
+    ["Dollar slips and Treasury yields fall after weak jobs report", "Reuters", 180],
+    ["Gold traders await Powell speech", "CNBC", 300],
+  ].map(([title, source, minAgo], i) => {
+    const r = classifyGoldImpact(String(title));
+    const t = new Date(Date.now() - Number(minAgo) * 60000).toISOString();
+    return { id: `n${i}`, title, link: "https://example.com/" + i, source, published_at: t, snippet: "", label: r.label, confidence: r.confidence, conflict: r.conflict, rule_ids: r.ruleIds, reasons: r.reasons, explanation: explainImpact(r), created_at: t };
+  }),
+  econ_events: [
+    ["CPI m/m", "High", 25, "0.3%", "0.4%"],
+    ["Unemployment Claims", "Medium", 25, "199K", "197K"],
+    ["FOMC Statement", "High", 60 * 26, null, null],
+    ["Retail Sales m/m", "High", -60 * 5, "0.3%", "1.2%"],
+  ].map(([title, impact, minAhead, forecast, previous]) => ({ event_key: `USD|${title}`, title, country: "USD", impact, time_at: new Date(Date.now() + Number(minAhead) * 60000).toISOString(), forecast, previous, fetched_at: new Date().toISOString() })),
 };
 
 async function mockSupabase(route: Route) {
@@ -129,7 +147,7 @@ const session = {
   access_token: "mock", refresh_token: "mock", token_type: "bearer", expires_in: 3600 * 24 * 365, expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
   user: { id: UID, email: "demo@goldmarket.local", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-10-01T00:00:00Z" },
 };
-const pages = ["/", "/opportunities/", "/chart/", "/risk/", "/journal/", "/stats/", "/settings/", "/login/"];
+const pages = ["/", "/opportunities/", "/chart/", "/news/", "/risk/", "/journal/", "/stats/", "/settings/", "/login/"];
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 },

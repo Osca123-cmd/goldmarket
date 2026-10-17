@@ -123,3 +123,18 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 - Judul dibuat agar siap ditindaklanjuti **sebelum** zona tersentuh: setup baru → `🟢 READY BUY XAUUSD — M15` / `🔴 READY SELL XAUUSD — M15` (isi: zona, entry, SL, TP1–TP3, skor); mendekati entry → `READY … · X pips lagi`; lalu `✅ KONFIRMASI …`, `🎯 ZONA ENTRY TERSENTUH …`, `❌ SETUP BATAL …`, `⌛ SETUP KEDALUWARSA …`. Notifikasi bukan perintah eksekusi; website tidak mengirim order ke broker.
 - iPhone/iPad: wajib iOS 16.4+ dan aplikasi dibuka dari ikon **Layar Utama** (Bagikan → Tambahkan ke Layar Utama). Android: Chrome/Edge/Firefox.
 - Pengiriman tidak dijamin tepat waktu (jaringan, hemat baterai, kebijakan OS).
+
+## 12. News AI (gratis, tanpa API key)
+
+- **Sumber berita** (RSS publik, judul + tautan saja, artikel tidak disalin): Google News (pencarian gold/XAUUSD/Fed), Investing.com (komoditas, ekonomi, forex), Federal Reserve (rilis pers resmi), CNBC Economy, MarketWatch. Engine mode `news` berjalan tiap 15 menit; sumber yang gagal (mis. HTTP 503) dilewati dan dicatat di `engine_runs.stats.feeds`.
+- **Relevansi**: gerbang kata kunci (gold, XAU, Fed, FOMC, dollar, yields, CPI, NFP, PCE, inflation, …) + skor kemiripan embedding model `gte-small` bawaan Supabase Edge Runtime (gratis; disimpan di `news_items.relevance`; filter opsional via env `NEWS_MIN_RELEVANCE`, default 0 = tidak memfilter). Bila model tidak tersedia, cukup kata kunci.
+- **Label dampak ke emas** (`src/core/news.ts`, `classifyGoldImpact`) — aturan transparan, tiap aturan dihitung sekali:
+  - Mendukung emas (+2): pemangkasan suku bunga/dovish, USD melemah, imbal hasil turun / bond rally, inflasi melandai, data AS lemah, safe haven/geopolitik/krisis, pembelian bank sentral / arus masuk ETF.
+  - Menekan emas (−2): kenaikan suku bunga/hawkish/higher for longer, USD menguat, imbal hasil naik, inflasi panas, data AS kuat, ketegangan mereda (ceasefire/trade deal).
+  - Laporan harga emas naik/turun: ±1.
+  - Negasi sebelum frasa ("rules out rate cuts", "delays rate cut") membalik arah aturan tersebut dan ditulis di alasan.
+  - Label = tanda jumlah skor; skor 0 → Netral. Bila ada faktor dua arah → ditandai "faktor bertentangan".
+  - Keyakinan hanya **rendah** atau **sedang** (≥ 2 pendorong searah tanpa konflik). Tidak pernah ditampilkan sebagai persentase/probabilitas.
+- **Keterbatasan jujur**: tanpa LLM generatif tidak ada ringkasan bahasa Indonesia baru; judul tampil dalam bahasa asli + penjelasan Indonesia dari templat aturan. Aturan kata kunci bisa keliru membaca konteks (sarkasme, berita non-AS); baca sumbernya.
+- **Kalender ekonomi**: feed mingguan publik ForexFactory (`ff_calendar_thisweek.json`), diambil maksimal sekali per jam; hanya USD dampak High & Medium. Feed ini **tidak memuat angka actual** — UI hanya menampilkan forecast/previous. Jadwal minggu depan baru tersedia saat sumber memperbarui kalender di awal minggu.
+- **Peringatan sebelum news besar**: event USD High dalam ambang menit per pengguna (`user_settings.news_alert_minutes`, default 30, 5–240) → push `⚠️ NEWS BESAR {N} menit lagi: {judul} (USD)` sekali per event per pengguna (dedupe `user_alerts`, kunci `news:<event>`); lonceng in-app 30 menit sebelumnya. Bisa dimatikan di Pengaturan → jenis notifikasi "News besar".

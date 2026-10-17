@@ -15,6 +15,7 @@ Website analisis XAUUSD yang berfungsi nyata: data pasar → validasi data → a
 | Dashboard | Harga terakhir, bid/ask, spread, perubahan harian, high/low, waktu update, sumber, status feed (Live / Delayed / Reconnecting / Disconnected / Market Closed / Demo), status analisis + alasan, ringkasan H4/H1/M15/M5, peluang teratas, sesi Asia/London/New York (WIB/UTC, countdown, range, volatilitas) |
 | Live Opportunities | Filter arah/TF/strategi/skor/sesi/status/kelayakan; jarak ke entry (pips), usia, alasan & gate, skor per komponen, probabilitas historis (bila memadai) |
 | Chart & Analysis | Candlestick M1–D1 (lightweight-charts), zoom/pan/crosshair, EMA 20/50/200, RSI 14, ATR 14, S/R, area entry, SL/TP1-3, invalidasi, toggle overlay; tab widget TradingView terpisah (tampilan saja) |
+| News AI | Berita emas dari RSS gratis (Google News, Investing.com, Federal Reserve, CNBC, MarketWatch) dengan label otomatis Bullish/Bearish/Netral untuk XAUUSD + alasan berbasis aturan; kalender ekonomi USD (ForexFactory) dengan countdown; push "⚠️ NEWS BESAR N menit lagi". Gratis, tanpa API key — lihat `docs/STRATEGY.md` §12 |
 | Kalkulator Risiko | Risiko nominal, jarak SL (pips), lot (dibulatkan ke bawah per lot step), nilai pip per lot dari spesifikasi broker + kurs, profit tiap TP, RR sebelum/sesudah biaya |
 | Jurnal Trading | Catat manual / dari setup; entry aktual, lot, SL, TP, waktu, biaya; milestone TP terpisah dari status akhir; partial close; tutup TP1/TP2/TP3/SL/BE/manual/cancelled dengan konfirmasi; pindah SL ke BE; catatan; screenshot (≤ 5 MB, PNG/JPEG/WEBP); histori perubahan otomatis (trigger DB) |
 | Statistik | Win rate, net P/L, profit factor, avg win/loss, R-multiple, drawdown, per strategi/sesi/TF, kalender, kurva ekuitas, ekspor CSV, penjelasan metode |
@@ -83,7 +84,7 @@ Pastikan lisensi provider mengizinkan penggunaan Anda (data pasar hanya dapat di
 
 ## Dokumen
 
-- [`docs/STRATEGY.md`](docs/STRATEGY.md) — aturan strategi, gate, skor, probabilitas
+- [`docs/STRATEGY.md`](docs/STRATEGY.md) — aturan strategi, gate, skor, probabilitas, News AI
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment & konfigurasi
 - [`docs/TESTING.md`](docs/TESTING.md) — hasil pengujian
 - [`docs/CREDENTIALS.md`](docs/CREDENTIALS.md) — integrasi yang masih butuh kredensial / langkah manual

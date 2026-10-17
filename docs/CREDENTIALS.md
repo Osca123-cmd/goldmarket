@@ -8,5 +8,6 @@
 | SMTP email | SMTP bawaan Supabase (terbatas) | Pasang SMTP (Resend, Postmark, dll.) untuk produksi. |
 | Job pembersihan data lama | Fungsi ada di migrasi, belum terjadwal | Jalankan bagian `goldmarket_cleanup` dari `supabase/migrations/20261017000002_cron.sql` di SQL editor (butuh konfirmasi karena berisi DELETE). |
 | Web Push (notifikasi saat tab tertutup) | Belum (opsional) | Saat ini notifikasi browser hanya saat tab terbuka. Web Push membutuhkan kunci VAPID + service worker. |
+| Ringkasan berita AI generatif (opsional) | Tidak dipakai — News AI memakai aturan + embedding `gte-small` bawaan Supabase (gratis) | Ringkasan bahasa Indonesia butuh LLM (mis. Anthropic Claude — berbayar). Bila diinginkan: simpan key sebagai secret Edge Function, jangan pernah di browser. |
 | WebSocket provider | Tidak dipakai | Twelve Data WebSocket butuh paket berbayar; browser sudah menerima pembaruan via Supabase Realtime (WebSocket). |
 | Kalender libur pasar | Kosong | Isi `holidays` di jadwal (`src/core/sessions.ts`) atau gunakan provider yang mengirim status pasar (Twelve Data `is_market_open` sudah dipakai otomatis). |
