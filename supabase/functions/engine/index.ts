@@ -647,6 +647,8 @@ const NEWS_FEEDS = [
 const FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 const NEWS_MAX_AGE_SEC = 48 * 3600;
 const NEWS_MIN_RELEVANCE = Number(env("NEWS_MIN_RELEVANCE", "0"));
+// Batas CPU Edge Function: embedding hanya untuk beberapa judul baru per putaran (label tetap berbasis aturan untuk semua)
+const NEWS_EMBED_MAX = Number(env("NEWS_EMBED_MAX", "6"));
 const RELEVANCE_PROTOTYPES = [
   "gold price outlook and bullion market",
   "Federal Reserve interest rate decision and inflation",
@@ -663,6 +665,7 @@ async function fetchText(url: string): Promise<string> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Embedder = { run: (text: string, opts: Record<string, unknown>) => Promise<any> };
 let embedder: Embedder | null | undefined;
+let protoCache: number[][] | null = null;
 function getEmbedder(): Embedder | null {
   if (embedder !== undefined) return embedder;
   try {
@@ -707,13 +710,17 @@ async function news(db: Db) {
   const known = new Set((existing ?? []).map((r) => r.dedupe_key));
   const todo = fresh.filter((it) => !known.has(newsKey(it.title)));
 
-  let protos: number[][] | null = null;
   let embedded = 0;
   const rows = [];
   for (const it of todo) {
     let relevance: number | null = null;
-    if (protos === null) protos = (await Promise.all(RELEVANCE_PROTOTYPES.map(embed))).filter((v): v is number[] => !!v);
-    if (protos.length) {
+    if (embedded < NEWS_EMBED_MAX && protoCache === null && getEmbedder()) {
+      const ps = [];
+      for (const t of RELEVANCE_PROTOTYPES) ps.push(await embed(t));
+      protoCache = ps.filter((v): v is number[] => !!v);
+    }
+    const protos = protoCache ?? [];
+    if (embedded < NEWS_EMBED_MAX && protos.length) {
       const v = await embed(`${it.title}. ${it.snippet}`);
       if (v) {
         relevance = Math.round(maxSimilarity(v, protos) * 1000) / 1000;
