@@ -69,6 +69,12 @@ export interface SetupRow {
   session: string | null;
   data_source: string;
   data_time: string;
+  outcome: "open" | "win" | "loss" | "timeout" | null;
+  outcome_tp: number | null;
+  outcome_pips: number | null;
+  outcome_at: string | null;
+  outcome_note: string | null;
+  outcome_ambiguous: boolean;
 }
 
 export interface AnalysisRow {
@@ -204,12 +210,32 @@ export function useSetups(days = 3) {
     const { data, error } = await supabase()
       .from("setups")
       .select("*")
-      .or(`status.in.(approaching,awaiting_confirmation,entry_touched),created_at.gte.${since}`)
+      .or(`status.in.(approaching,awaiting_confirmation),and(status.eq.entry_touched,or(outcome.is.null,outcome.eq.open)),created_at.gte.${since}`)
       .order("created_at", { ascending: false })
       .limit(300);
     if (error) throw error;
     return (data ?? []) as SetupRow[];
   }, 30000);
+}
+
+/** Sinyal masih aktif: belum tersentuh, atau tersentuh tetapi hasil TP/SL belum final. */
+export function isActiveSignal(s: Pick<SetupRow, "status" | "outcome">): boolean {
+  if (s.status === "approaching" || s.status === "awaiting_confirmation") return true;
+  return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open");
+}
+
+/** Riwayat sinyal: setup yang entry-nya tersentuh menurut feed beserta hasilnya. */
+export function useSignalHistory(limit = 100) {
+  return useLive<SetupRow[]>(`history:${limit}`, "setups", async () => {
+    const { data, error } = await supabase()
+      .from("setups")
+      .select("*")
+      .not("outcome", "is", null)
+      .order("entry_touched_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []) as SetupRow[];
+  }, 60000);
 }
 
 export function useNotifications() {

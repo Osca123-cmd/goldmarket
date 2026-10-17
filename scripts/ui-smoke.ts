@@ -12,12 +12,15 @@ import { DEFAULT_ENGINE_CONFIG } from "../src/core/config.ts";
 import { demoPrice, demoProvider } from "../src/core/providers.ts";
 import { TF_SECONDS, type Timeframe } from "../src/core/types.ts";
 import { barOverlapsMarket, demoCandle } from "../src/core/providers.ts";
+import { evaluateOutcome } from "../src/core/outcome.ts";
+import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const OUT = process.env.SHOT_DIR ?? join(ROOT, "docs/screenshots");
 mkdirSync(OUT, { recursive: true });
 const REF = "acyvxbqyxdorkrqeibtk";
 const NOW = Date.parse("2026-10-14T09:12:00Z") / 1000; // Rabu, sesi London
+const iso = (s: number) => new Date(s * 1000).toISOString();
 const UID = "11111111-1111-1111-1111-111111111111";
 
 function series(tf: Timeframe, end: number, count: number) {
@@ -49,10 +52,27 @@ for (let t = NOW - 6 * 3600; t <= NOW; t += 900) {
     });
   }
 }
-setups = setups.map(({ __stored, ...s }) => s).reverse();
+setups = setups.map(({ __stored, ...s }) => ({ ...s, outcome: null, outcome_tp: null, outcome_pips: null, outcome_at: null, outcome_note: null, outcome_ambiguous: false })).reverse();
+
+// Riwayat sinyal: setup historis dari engine yang sama, hasilnya dinilai evaluateOutcome pada candle demo
+const history: Record<string, unknown>[] = [];
+let hist: Record<string, unknown>[] = [];
+for (let t = NOW - 3 * 86400; t <= NOW - 6 * 3600 && history.length < 8; t += 900) {
+  const r = { H4: series("H4", t, 300), H1: series("H1", t, 300), M15: series("M15", t, 300), M5: series("M5", t, 300) };
+  const o = runEngineCycle({ nowSec: t, rawCandles: r, price: demoPrice(t / 60), quoteTimeSec: t, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "demo", previousFeedStatus: "demo", existing: hist as never, config: DEFAULT_ENGINE_CONFIG });
+  for (const c of o.created) {
+    hist.push({ id: c.identityKey, identity_key: c.identityKey, strategy: c.strategy, direction: c.direction, timeframe: c.timeframe, confirm_tf: c.confirmTf, entry_type: c.entryType, entry_price: c.entry, entry_low: c.entryLow, entry_high: c.entryHigh, invalidation: c.invalidation, sl: c.sl, created_at_sec: c.createdAt, expires_at_sec: c.expiresAt, status: "approaching", eligible: c.eligible, confirmed_at_sec: null, entry_touched_at_sec: null });
+    if (!c.eligible) continue;
+    const fut = series("M5", Math.min(NOW, c.createdAt + 86400), 320).filter((b) => b.time > c.createdAt);
+    const touch = c.entryType === "market" ? fut[0] : fut.find((b) => b.low <= c.entry && b.high >= c.entry);
+    if (!touch) continue;
+    const res = evaluateOutcome({ direction: c.direction, entry: c.entry, sl: c.sl, tps: [c.tp1, c.tp2, c.tp3], entryTouchedAtSec: touch.time, candles: fut, barSec: 300, price: null, nowSec: Math.min(NOW, touch.time + 86400), maxHoldSec: 86400, spec: DEFAULT_XAUUSD });
+    history.push({ ...setups[0], id: `00000000-0000-4000-9000-${String(history.length + 1).padStart(12, "0")}`, direction: c.direction, strategy: c.strategy, timeframe: c.timeframe, entry_price: c.entry, sl: c.sl, tp1: c.tp1, tp2: c.tp2, tp3: c.tp3, score: c.score.total, status: "entry_touched", entry_touched_at: iso(touch.time), outcome: res.outcome, outcome_tp: res.tpHit, outcome_pips: res.pips, outcome_note: res.note, outcome_ambiguous: res.ambiguous });
+  }
+}
+console.log(`Riwayat sinyal fixture: ${history.length}`);
 const out = runEngineCycle({ nowSec: NOW, rawCandles: raw, price: demoPrice(NOW / 60), quoteTimeSec: NOW, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "live", previousFeedStatus: "live", existing: [], config: DEFAULT_ENGINE_CONFIG });
 const q = await demoProvider().fetchQuote(NOW);
-const iso = (s: number) => new Date(s * 1000).toISOString();
 const fixtures: Record<string, unknown> = {
   market_snapshot: { id: "current", source: "demo", source_label: "Demo — data simulasi", proxy_note: "Data SIMULASI untuk demonstrasi. Bukan harga pasar.", is_demo: true, supports_bid_ask: true, price: q.price, bid: q.bid, ask: q.ask, spread_pips: 3, day_open: q.dayOpen, day_high: q.dayHigh, day_low: q.dayLow, day_change: q.price - q.dayOpen!, day_change_pct: ((q.price - q.dayOpen!) / q.dayOpen!) * 100, quote_time: iso(NOW), fetched_at: iso(NOW), feed_status: "demo", market_open: true, consecutive_failures: 0, next_retry_at: null, last_error: null, updated_at: iso(NOW) },
   analysis_snapshots: {
@@ -60,7 +80,7 @@ const fixtures: Record<string, unknown> = {
     timeframes: Object.fromEntries(Object.entries(out.analysis.tfs).map(([k, a]) => [k, { bias: a!.bias, structure: a!.structure.label, close: a!.lastClose, ema20: a!.ema20, ema50: a!.ema50, ema200: Number.isFinite(a!.ema200) ? a!.ema200 : null, rsi: a!.rsi, atr: a!.atr, slope: a!.ema50SlopeAtr, bars: a!.bars, last_time: iso(a!.lastTime) }])),
     levels: (out.analysis.tfs.M15?.levels ?? []).filter((l) => l.touches >= 2).map((l) => ({ ...l, tf: "M15" })), session: out.session, price: q.price, data_time: iso(NOW),
   },
-  setups,
+  setups: [...setups, ...history],
   notifications: setups.slice(0, 5).map((s, i) => ({ id: `n-${i}`, created_at: s.created_at, kind: "new_setup", title: `Setup ${s.direction} baru — ${s.timeframe}`, body: `Entry ${s.entry_price}`, severity: "info", setup_id: s.id, score: s.score, timeframe: s.timeframe })),
   user_settings: { user_id: UID, display_tz: "Asia/Jakarta", broker_name: "Contoh", pip_size: 0.1, tick_size: 0.01, digits: 2, contract_size: 100, lot_step: 0.01, min_lot: 0.01, max_lot: 100, commission_per_lot: 7, account_currency: "USD", quote_to_account_rate: 1, account_balance: 5000, risk_percent: 1, default_spread_pips: 3, sl_pips: 50, tp1_pips: 50, tp2_pips: 100, tp3_pips: 150, near_entry_pips: 20, notify_cooldown_min: 15, min_score: { M15: 60, H1: 60 }, notify_kinds: {}, browser_push: false, starting_balance: 5000 },
   journal_trades: [
@@ -91,6 +111,7 @@ async function mockSupabase(route: Route) {
       return route.fulfill({ json: cs });
     }
     let data = fixtures[table] ?? [];
+    if (table === "setups" && url.searchParams.get("outcome") === "not.is.null") data = (data as Record<string, unknown>[]).filter((r) => r.outcome != null);
     const single = (route.request().headers()["accept"] ?? "").includes("vnd.pgrst.object");
     if (single) {
       if (Array.isArray(data)) data = data[0] ?? null;
@@ -129,8 +150,7 @@ for (const vp of viewports) {
     page.on("pageerror", (e) => { if (!errors.length && process.env.DEBUG_STACK) console.log(e.stack?.slice(0, 2500)); errors.push(e.message); });
     await page.goto(`http://localhost:4173${p}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
-    if (p === "/journal/") await page.locator("tbody tr").first().click().catch(() => {});
-    if (p === "/opportunities/") await page.getByText("Lihat alasan & skor").first().click().catch(() => {});
+    if (p === "/journal/") await page.locator("section button.w-full").first().click().catch(() => {});
     await page.waitForTimeout(500);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     if (bg !== "rgb(10, 14, 22)") problems.push(`${vp.name} ${p}: stylesheet tidak termuat (bg ${bg})`);

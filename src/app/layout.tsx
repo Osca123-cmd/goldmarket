@@ -2,7 +2,12 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 export const metadata: Metadata = {
+  manifest: `${BASE}/manifest.webmanifest`,
+  icons: { icon: `${BASE}/favicon.png`, apple: `${BASE}/apple-touch-icon.png` },
+  appleWebApp: { capable: true, title: "GOLDMARKET", statusBarStyle: "black-translucent" },
   title: "GOLDMARKET — Analisis XAUUSD",
   description: "Platform analisis XAUUSD: data pasar, setup otomatis, kalkulator risiko, notifikasi, dan jurnal trading. Informasional, bukan eksekusi order.",
 };

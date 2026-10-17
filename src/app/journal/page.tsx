@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
-import { Card, Confirm, Disclaimer, DirBadge, Empty, Field, Stat, cx, fmt, fmtMoney, fmtTime } from "@/components/ui";
+import { Card, Confirm, Disclaimer, DirBadge, Empty, Field, Stat, cx, fmt, fmtMoney, fmtTime, useNow } from "@/components/ui";
+import { HistoryPanel, HistoryRow, relTime } from "@/components/SignalHistory";
+import { useSignalHistory } from "@/lib/market";
+import { gradeOf } from "@/core/outcome";
+import { classify } from "@/core/stats";
 import { useAuth } from "@/lib/auth";
 import { friendlyError, supabase } from "@/lib/supabase";
 import {
@@ -22,6 +26,14 @@ import {
 } from "@/core/journal";
 import { sessionAt } from "@/core/sessions";
 import { STRATEGY_LABEL } from "@/core/config";
+
+/** Hasil dalam pips: rata-rata tertimbang harga keluar (partial + final) dibanding entry. */
+function tradePips(t: JournalTrade, own: JournalPartial[], pipSize: number): number | null {
+  const lots = own.reduce((a, p) => a + p.lot, 0);
+  if (!lots) return null;
+  const sgn = t.direction === "BUY" ? 1 : -1;
+  return Math.round((own.reduce((a, p) => a + p.lot * sgn * (p.price - t.entry_price), 0) / lots / pipSize) * 10) / 10;
+}
 
 export default function Page() {
   return (
@@ -70,6 +82,10 @@ function Journal() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "open" | "closed" | "cancelled">("all");
+  const [tab, setTab] = useState<"mine" | "signals">("mine");
+  const history = useSignalHistory(200);
+  const signals = history.data ?? [];
+  const now = useNow(30000);
   const [selected, setSelected] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [prefill, setPrefill] = useState<Partial<Record<string, string>> | null>(null);
@@ -111,6 +127,13 @@ function Journal() {
   }, [setups, prefill]);
 
   const list = trades.filter((t) => filter === "all" || t.status === filter);
+  const startFromSetup = (id: string) => {
+    const s = setups.find((x) => x.id === id) ?? signals.find((x) => x.id === id);
+    if (!s) return;
+    setPrefill({ setup_id: s.id, direction: s.direction, strategy: s.strategy, timeframe: s.timeframe, entry_price: String(s.entry_price), initial_sl: String(s.sl), tp1: String(s.tp1), tp2: String(s.tp2), tp3: String(s.tp3) });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const sel = trades.find((t) => t.id === selected) ?? null;
 
   return (
@@ -139,71 +162,100 @@ function Journal() {
         />
       )}
 
-      <Card
-        title="Transaksi"
+      <HistoryPanel
+        title={tab === "mine" ? "Trade History" : "Signal History"}
         action={
-          <div className="flex flex-wrap gap-1 text-xs">
-            {(["all", "open", "closed", "cancelled"] as const).map((k) => (
-              <button key={k} onClick={() => setFilter(k)} className={cx("rounded-lg border px-2 py-1", filter === k ? "border-gold text-gold" : "border-line text-muted")}>
-                {k === "all" ? "Semua" : STATUS_LABEL[k]}
-              </button>
-            ))}
+          <div className="flex rounded-xl border border-line p-0.5 text-xs" role="tablist">
+            <button role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={cx("rounded-lg px-3 py-1.5 font-semibold", tab === "mine" ? "bg-gold/15 text-gold" : "text-muted")}>
+              Transaksi Saya
+            </button>
+            <button role="tab" aria-selected={tab === "signals"} onClick={() => setTab("signals")} className={cx("rounded-lg px-3 py-1.5 font-semibold", tab === "signals" ? "bg-gold/15 text-gold" : "text-muted")}>
+              Riwayat Sinyal
+            </button>
           </div>
         }
+        summary={
+          tab === "mine" ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {(["all", "open", "closed", "cancelled"] as const).map((k) => (
+                <button key={k} onClick={() => setFilter(k)} className={cx("rounded-lg border px-2 py-1", filter === k ? "border-gold text-gold" : "border-line text-muted")}>
+                  {k === "all" ? "Semua" : STATUS_LABEL[k]}
+                </button>
+              ))}
+              <span className="ml-auto text-muted">Hasil dalam pips (rata-rata harga keluar vs entry)</span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">Sinyal engine yang entry-nya tersentuh menurut feed, dinilai otomatis (WIN/LOSS). Terpisah dari transaksi Anda — tidak mengubah jurnal.</p>
+          )
+        }
       >
-        {err && <p className="text-sm text-sell">{err}</p>}
-        {loading ? (
-          <p className="text-sm text-muted">Memuat…</p>
+        {err && <p className="px-5 py-3 text-sm text-sell">{err}</p>}
+        {tab === "signals" ? (
+          signals.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-muted">Belum ada riwayat sinyal.</p>
+          ) : (
+            signals.map((h) => (
+              <HistoryRow
+                key={h.id}
+                direction={h.direction}
+                timeframe={h.timeframe}
+                grade={gradeOf(h.score)}
+                time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`}
+                result={h.outcome === "open" || !h.outcome ? "open" : h.outcome}
+                pips={h.outcome === "open" ? null : h.outcome_pips}
+                sub={
+                  <a className="text-gold hover:underline" href={`?fromSetup=${h.id}`} onClick={(e) => { e.preventDefault(); startFromSetup(h.id); }}>
+                    Catat sebagai transaksi saya →
+                  </a>
+                }
+              />
+            ))
+          )
+        ) : loading ? (
+          <p className="px-5 py-6 text-sm text-muted">Memuat…</p>
         ) : list.length === 0 ? (
-          <Empty title="Belum ada transaksi">Catat transaksi manual atau dari setup. Statistik dihitung hanya dari jurnal ini.</Empty>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Dibuka</th>
-                  <th>Arah</th>
-                  <th>Strategi</th>
-                  <th>Entry</th>
-                  <th>Lot</th>
-                  <th>SL</th>
-                  <th>Milestone</th>
-                  <th>Status</th>
-                  <th>Net</th>
-                  <th>R</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((t) => {
-                  const own = partials.filter((p) => p.trade_id === t.id);
-                  const pnl = realizedPnl(t, own);
-                  const r = t.status === "closed" ? rMultiple(t, pnl.net) : null;
-                  const remind = tp1ReachedByFeed(t, snapshot?.price ?? null);
-                  return (
-                    <tr key={t.id} className={cx("cursor-pointer hover:bg-surface-2/60", selected === t.id && "bg-gold/5")} onClick={() => setSelected(t.id)}>
-                      <td>{fmtTime(t.opened_at, tz, true)}</td>
-                      <td><DirBadge dir={t.direction} /></td>
-                      <td className="text-muted">{STRATEGY_LABEL[t.strategy as keyof typeof STRATEGY_LABEL] ?? t.strategy} · {t.timeframe}</td>
-                      <td className="num">{fmt(t.entry_price)}</td>
-                      <td className="num">{fmt(t.lot)}</td>
-                      <td className="num">{fmt(t.sl)}{t.sl !== t.initial_sl && <span className="text-[10px] text-muted"> (awal {fmt(t.initial_sl)})</span>}</td>
-                      <td className="text-xs">
-                        {[t.tp1_hit_at && "TP1", t.tp2_hit_at && "TP2", t.tp3_hit_at && "TP3"].filter(Boolean).join(" · ") || "—"}
-                        {remind && <span className="ml-1 text-warn" title="Harga feed mencapai TP1">⚑</span>}
-                      </td>
-                      <td>{t.status === "closed" && t.outcome ? OUTCOME_LABEL[t.outcome] : STATUS_LABEL[t.status]}</td>
-                      <td className={cx("num", pnl.net > 0 ? "text-buy" : pnl.net < 0 ? "text-sell" : "")}>{own.length || t.status === "closed" ? fmtMoney(pnl.net, ccy) : "—"}</td>
-                      <td className="num">{r != null ? fmt(r) : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <Empty title="Belum ada transaksi">Catat transaksi manual atau dari sinyal. Statistik dihitung hanya dari transaksi Anda.</Empty>
           </div>
+        ) : (
+          list.map((t) => {
+            const own = partials.filter((p) => p.trade_id === t.id);
+            const pnl = realizedPnl(t, own);
+            const r = t.status === "closed" ? rMultiple(t, pnl.net) : null;
+            const kind = t.status === "open" ? "open" : t.status === "cancelled" ? "cancelled" : classify(pnl.net, r, t.outcome);
+            const remind = tp1ReachedByFeed(t, snapshot?.price ?? null);
+            const setupScore = setups.find((x) => x.id === t.setup_id)?.score ?? signals.find((x) => x.id === t.setup_id)?.score ?? null;
+            return (
+              <HistoryRow
+                key={t.id}
+                active={selected === t.id}
+                onClick={() => {
+                  setSelected(t.id);
+                  setTimeout(() => document.getElementById("trade-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                }}
+                direction={t.direction}
+                timeframe={t.timeframe}
+                grade={gradeOf(setupScore)}
+                time={`${relTime(t.status === "open" ? t.opened_at : (t.closed_at ?? t.opened_at), now)} · ${t.status === "closed" && t.outcome ? OUTCOME_LABEL[t.outcome] : STATUS_LABEL[t.status]}`}
+                result={kind}
+                pips={t.status === "cancelled" ? null : tradePips(t, own, settings?.pip_size ?? 0.1)}
+                sub={
+                  <>
+                    {t.status !== "open" && own.length > 0 && <span className={pnl.net >= 0 ? "text-buy" : "text-sell"}>{fmtMoney(pnl.net, ccy)}{r != null ? ` · ${fmt(r)}R` : ""}</span>}
+                    {remind && <span className="text-warn"> ⚑ TP1 tersentuh feed — pertimbangkan SL ke BE</span>}
+                  </>
+                }
+              />
+            );
+          })
         )}
-      </Card>
+      </HistoryPanel>
 
-      {sel && <TradeDetail key={sel.id} t={sel} partials={partials.filter((p) => p.trade_id === sel.id)} price={snapshot?.price ?? null} tz={tz} ccy={ccy} onChanged={load} onClose={() => setSelected(null)} />}
+      {sel && (
+        <div id="trade-detail" className="scroll-mt-20">
+          <TradeDetail key={sel.id} t={sel} partials={partials.filter((p) => p.trade_id === sel.id)} price={snapshot?.price ?? null} tz={tz} ccy={ccy} onChanged={load} onClose={() => setSelected(null)} />
+        </div>
+      )}
       <Disclaimer />
     </div>
   );

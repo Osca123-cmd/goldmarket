@@ -1,6 +1,6 @@
 # Hasil Pengujian (17 Oktober 2026)
 
-## 1. Unit test — `npm test` (vitest): **44/44 lulus**
+## 1. Unit test — `npm test` (vitest): **51/51 lulus**
 
 | Area (spesifikasi §16) | Test | Hasil |
 |---|---|---|
@@ -14,6 +14,7 @@
 | Statistik | win rate, profit factor, BE, drawdown (nominal/R/%), transaksi terbuka & batal dipisah, data kosong tanpa angka karangan, CSV anti formula-injection | ✓ 4/4 |
 | Sesi & DST | London 07:00 UTC (BST) / 08:00 UTC (GMT); NY 12:00/13:00 UTC; transisi DST AS 8 Mar & UK 29 Mar 2026; Tokyo; overlap; jadwal pasar akhir pekan & jeda harian | ✓ 7/7 |
 | Lifecycle peluang | limit/stop tersentuh; data tidak valid tidak mencatat sentuhan; invalid via close; kedaluwarsa; bias berbalik | ✓ 6/6 |
+| Hasil sinyal (feed) | `outcome.test.ts`: SL sebelum TP1 = LOSS −50; TP2 lalu SL = WIN +100; TP3 = +150; SL & TP satu candle = LOSS ambigu; SELL simetris; open/timeout; grade | ✓ 7/7 |
 | Backtest | SL+TP satu candle → ambigu & konservatif; TP sebelum SL; biaya; entry tidak tersentuh; Wilson CI; split dev/test | ✓ 6/6 |
 
 ## 2. Database (Supabase, transaksi di-rollback)
@@ -51,3 +52,10 @@ Bug yang ditemukan & diperbaiki selama pengujian:
 
 - Uji end-to-end browser ke Supabase produksi tidak dapat dijalankan dari lingkungan build (jaringan dibatasi); diganti uji DB langsung + UI dengan mock.
 - Data historis per strategi masih pendek (±2 minggu M5); probabilitas per strategi akan muncul otomatis setelah sampel uji ≥ 30.
+
+## 5. Pembaruan: Live Signal, Signal History, Web Push (18 Okt 2026)
+
+- Engine v3 di server: pelacakan hasil sinyal, push ke perangkat, peringatan jarak-entry per pengguna. Kunci VAPID otomatis terbentuk di server (library web-push terbukti berjalan di Edge Function).
+- Uji UI ulang (desktop + mobile): tanpa scroll horizontal & tanpa error JS.
+- Bug ditemukan & diperbaiki: sinyal "Entry tersentuh" yang hasilnya sudah final masih dianggap aktif → kini aktif hanya jika belum tersentuh atau hasil masih OPEN.
+- Push end-to-end ke HP tidak dapat diuji dari lingkungan build (layanan push vendor diblokir jaringan); gunakan tombol **Uji push dari server** di aplikasi.

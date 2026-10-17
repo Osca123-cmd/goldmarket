@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { SetupRow } from "@/lib/market";
+import { isActiveSignal, type SetupRow } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
 import { STRATEGY_LABEL } from "@/core/config";
 import { priceToPips } from "@/core/instrument";
@@ -22,7 +22,7 @@ const ENTRY_TYPE_LABEL = { market: "Market", limit: "Limit", stop: "Stop" } as c
 export function SetupCard({ s, price, tz, now, minScore, pipSize = 0.1 }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number }) {
   const [open, setOpen] = useState(false);
   const dist = price != null ? priceToPips(Math.abs(price - s.entry_price), { symbol: "", pipSize, tickSize: 0.01, digits: 2, contractSize: 100, quoteCurrency: "USD" }) : s.distance_pips;
-  const active = ["approaching", "awaiting_confirmation", "entry_touched"].includes(s.status);
+  const active = isActiveSignal(s);
   return (
     <article className={cx("rounded-2xl border bg-surface p-4 fade-in", s.direction === "BUY" ? "border-buy/25" : "border-sell/25", !active && "opacity-75")}>
       <div className="flex flex-wrap items-center gap-2">

@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useMarket } from "./MarketContext";
 import { cx, fmtTime } from "./ui";
 import { priceToPips } from "@/core/instrument";
+import { PushToggle } from "./PushToggle";
 
 interface Toast {
   key: string;
@@ -55,13 +56,6 @@ export function NotificationCenter() {
   const push = (t: Toast) => {
     setToasts((x) => [...x.filter((y) => y.key !== t.key), t].slice(-4));
     setTimeout(() => setToasts((x) => x.filter((y) => y.key !== t.key)), 9000);
-    if (settings?.browser_push && typeof Notification !== "undefined" && Notification.permission === "granted") {
-      try {
-        new Notification(t.title, { body: t.body, tag: t.key });
-      } catch {
-        /* abaikan */
-      }
-    }
   };
 
   // status baca dari server
@@ -153,6 +147,9 @@ export function NotificationCenter() {
               <button className="text-xs text-gold hover:underline" onClick={markAllRead}>
                 Tandai semua dibaca
               </button>
+            </div>
+            <div className="mb-2">
+              <PushToggle variant="compact" />
             </div>
             {visible.length === 0 && <p className="py-6 text-center text-sm text-muted">Belum ada notifikasi.</p>}
             <ul className="space-y-2">

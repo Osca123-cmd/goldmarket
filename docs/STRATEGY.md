@@ -104,3 +104,21 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 - SL dan TP tersentuh di candle yang sama → **ambigu, dihitung SL** (konservatif) dan dilaporkan jumlahnya.
 - 60% awal data = pengembangan, 40% akhir = pengujian. Yang ditampilkan hanya data uji, dengan n, periode, dan interval Wilson 95%.
 - Ditampilkan hanya bila n uji ≥ 30 (entry dan TP1). Jika tidak: “Probabilitas belum tersedia — validasi historis belum memadai.”
+
+## 10. Riwayat sinyal (hasil menurut feed) — terpisah dari jurnal
+
+`evaluateOutcome` (`src/core/outcome.ts`) dijalankan engine tiap menit untuk setup layak yang entry-nya tersentuh:
+- **WIN**: minimal TP1 tersentuh sebelum SL. Hasil = pips TP tertinggi yang tersentuh sebelum SL / TP3 / batas waktu.
+- **LOSS**: SL tersentuh sebelum TP1 (−pips SL).
+- SL & TP dalam candle M5 yang sama → TP pada candle itu tidak dihitung (konservatif) dan ditandai ambigu.
+- **TIMEOUT**: 24 jam (`SIGNAL_MAX_HOLD_HOURS`) tanpa TP1 maupun SL → hasil = pips harga terakhir.
+- Spread/komisi/slippage tidak dikurangkan. Ini hasil level sinyal, bukan transaksi pengguna; jurnal tidak pernah diubah otomatis.
+- Grade (A+ ≥ 80, A ≥ 70, B ≥ 60, C < 60) diturunkan dari skor kualitas, bukan probabilitas.
+
+## 11. Notifikasi push (HP & desktop)
+
+- Browser meminta izin hanya lewat tombol **Aktifkan notifikasi** (Live Opportunities, ikon lonceng, Pengaturan).
+- Langganan Web Push disimpan di `push_subscriptions` (RLS per pengguna). Kunci VAPID dibuat otomatis oleh engine; kunci privat hanya di Supabase Vault.
+- Engine mengirim push untuk: setup valid baru (≥ skor minimum per TF), konfirmasi, entry tersentuh, invalid/kedaluwarsa, hasil sinyal, gangguan koneksi, dan harga mendekati entry (ambang per pengguna, default 20 pips, sekali per setup).
+- iPhone/iPad: wajib iOS 16.4+ dan aplikasi dibuka dari ikon **Layar Utama** (Bagikan → Tambahkan ke Layar Utama). Android: Chrome/Edge/Firefox.
+- Pengiriman tidak dijamin tepat waktu (jaringan, hemat baterai, kebijakan OS).

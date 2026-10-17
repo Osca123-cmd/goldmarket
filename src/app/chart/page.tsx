@@ -15,7 +15,7 @@ import {
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { Card, Disclaimer, DirBadge, cx, fmt } from "@/components/ui";
-import { fetchCandles, type SetupRow } from "@/lib/market";
+import { fetchCandles, isActiveSignal, type SetupRow } from "@/lib/market";
 import { atr, ema, rsi } from "@/core/indicators";
 import { TF_SECONDS, TIMEFRAMES, type Candle, type Timeframe } from "@/core/types";
 import { STRATEGY_LABEL } from "@/core/config";
@@ -69,7 +69,7 @@ function ChartPage() {
     };
   }, [snapshot?.source, tf]);
 
-  const activeSetups = setups.filter((s) => ["approaching", "awaiting_confirmation", "entry_touched"].includes(s.status));
+  const activeSetups = setups.filter((s) => isActiveSignal(s));
   const setup = setups.find((s) => s.id === setupId) ?? null;
 
   return (

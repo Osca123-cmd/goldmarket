@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { isConfigured } from "@/lib/supabase";
+import { registerSw } from "@/lib/push";
 import { effectiveStatus } from "@/lib/market";
 import { MarketProvider, useMarket } from "./MarketContext";
 import { NotificationCenter } from "./NotificationCenter";
@@ -152,6 +153,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!loading && !session) router.replace("/login/");
   }, [loading, session, router]);
+  useEffect(() => {
+    void registerSw();
+  }, []);
 
   if (!isConfigured) {
     return (

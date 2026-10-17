@@ -7,6 +7,7 @@ import { Card, Disclaimer, Field } from "@/components/ui";
 import { useAuth, DEFAULT_SETTINGS, type UserSettings } from "@/lib/auth";
 import { friendlyError, supabase } from "@/lib/supabase";
 import { pipsToPrice } from "@/core/instrument";
+import { PushToggle } from "@/components/PushToggle";
 
 export default function Page() {
   return (
@@ -67,7 +68,6 @@ function SettingsPage() {
   const { settings, reloadSettings, session } = useAuth();
   const [f, setF] = useState<Record<string, string>>({});
   const [kinds, setKinds] = useState<Record<string, boolean>>(DEFAULT_SETTINGS.notify_kinds);
-  const [push, setPush] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,7 +80,6 @@ function SettingsPage() {
     out.min_score_h1 = String(settings.min_score?.H1 ?? 60);
     setF(out);
     setKinds({ ...DEFAULT_SETTINGS.notify_kinds, ...settings.notify_kinds });
-    setPush(settings.browser_push);
   }, [settings]);
 
   const n = (k: string) => Number(String(f[k] ?? "").replace(",", "."));
@@ -116,14 +115,10 @@ function SettingsPage() {
     });
     if (!parsed.success) return setMsg({ ok: false, text: `${parsed.error.issues[0].path.join(".")}: ${parsed.error.issues[0].message}` });
     const { min_score_m15, min_score_h1, ...rest } = parsed.data;
-    if (push && typeof Notification !== "undefined" && Notification.permission !== "granted") {
-      const p = await Notification.requestPermission();
-      if (p !== "granted") setPush(false);
-    }
     setBusy(true);
     const { error } = await supabase()
       .from("user_settings")
-      .update({ ...rest, min_score: { M15: min_score_m15, H1: min_score_h1 }, notify_kinds: kinds, browser_push: push && (typeof Notification === "undefined" || Notification.permission === "granted") })
+      .update({ ...rest, min_score: { M15: min_score_m15, H1: min_score_h1 }, notify_kinds: kinds })
       .eq("user_id", session!.user.id);
     setBusy(false);
     if (error) return setMsg({ ok: false, text: friendlyError(error) });
@@ -205,10 +200,9 @@ function SettingsPage() {
               {l}
             </label>
           ))}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="accent-[#d6b25e]" checked={push} onChange={(e) => setPush(e.target.checked)} />
-            Notifikasi browser (minta izin; hanya saat tab terbuka)
-          </label>
+        </div>
+        <div className="mt-4">
+          <PushToggle />
         </div>
         <p className="mt-2 text-xs text-muted">Peringatan jarak entry adalah pemicu berbasis jarak harga dan tidak dijamin tiba sebelum harga menyentuh entry.</p>
       </Card>

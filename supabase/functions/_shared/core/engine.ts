@@ -8,7 +8,7 @@ import { dedupeBatch, dedupeCandidate, evaluateStatus, type StoredSetup } from "
 import { priceToPips } from "./instrument.ts";
 import { sessionAt } from "./sessions.ts";
 
-export type NotificationKind = "new_setup" | "confirmed" | "entry_touched" | "invalid" | "expired" | "connection";
+export type NotificationKind = "new_setup" | "confirmed" | "entry_touched" | "invalid" | "expired" | "connection" | "signal_result";
 
 export interface EngineNotification {
   kind: NotificationKind;

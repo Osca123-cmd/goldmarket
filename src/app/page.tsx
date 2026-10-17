@@ -7,7 +7,7 @@ import { SessionsCard } from "@/components/SessionsCard";
 import { SetupCard } from "@/components/SetupCard";
 import { Card, Disclaimer, Empty, Stat, StatusBadge, ago, cx, fmt, fmtTime, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus } from "@/lib/market";
+import { effectiveStatus, isActiveSignal } from "@/lib/market";
 import { ANALYSIS_STATUS_LABEL } from "@/core/analysis";
 
 export default function DashboardPage() {
@@ -27,7 +27,7 @@ function Dashboard() {
   const now = useNow(1000);
   const status = effectiveStatus(snapshot, now);
   const up = (snapshot?.day_change ?? 0) >= 0;
-  const active = setups.filter((s) => s.eligible && ["approaching", "awaiting_confirmation", "entry_touched"].includes(s.status) && s.score >= (settings?.min_score?.[s.timeframe] ?? 60));
+  const active = setups.filter((s) => s.eligible && isActiveSignal(s) && s.score >= (settings?.min_score?.[s.timeframe] ?? 60));
 
   return (
     <div className="space-y-4">

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { Card, Disclaimer, Field, Stat, cx, fmt, fmtMoney } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
+import { isActiveSignal } from "@/lib/market";
 import { calculateRisk, type BrokerSpec } from "@/core/risk";
 import { levelsFromEntry } from "@/core/instrument";
 import type { Direction } from "@/core/types";
@@ -122,7 +123,7 @@ function RiskCalc() {
             <select className="input ml-auto w-full sm:w-64" defaultValue="" onChange={(e) => fromSetup(e.target.value)} aria-label="Isi dari setup">
               <option value="">Isi dari setup aktif…</option>
               {setups
-                .filter((s) => s.eligible && ["approaching", "awaiting_confirmation", "entry_touched"].includes(s.status))
+                .filter((s) => s.eligible && isActiveSignal(s))
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.direction} {s.timeframe} @ {fmt(s.entry_price)}

@@ -16,6 +16,8 @@ import {
   runBacktest,
   runEngineCycle,
   DEFAULT_BT,
+  evaluateOutcome,
+  gradeOf,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -32,6 +34,8 @@ const QUOTE_INTERVAL_SEC = Number(env("QUOTE_INTERVAL_SEC", "60"));
 const ASSUMED_SPREAD_PIPS = Number(env("ASSUMED_SPREAD_PIPS", "3"));
 const STORED_TFS: Timeframe[] = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const ANALYSIS_TFS: Timeframe[] = ["H4", "H1", "M15", "M5"];
+const SIGNAL_MAX_HOLD_SEC = Number(env("SIGNAL_MAX_HOLD_HOURS", "24")) * 3600;
+const APP_URL = env("APP_URL", "https://osca123-cmd.github.io/goldmarket/");
 
 type Db = SupabaseClient;
 const iso = (sec: number) => new Date(sec * 1000).toISOString();
@@ -318,7 +322,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   const { data: existingRows } = await db
     .from("setups")
     .select("*")
-    .or(`status.in.(${ACTIVE_STATUSES.join(",")}),created_at.gte.${since}`)
+    .or(`status.in.(approaching,awaiting_confirmation),created_at.gte.${since}`)
     .order("created_at", { ascending: false })
     .limit(500);
   const existing = (existingRows ?? []).map(toStored);
@@ -404,7 +408,57 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     score: n.score ?? null,
     timeframe: n.timeframe ?? null,
   }));
-  if (notifRows.length) await db.from("notifications").upsert(notifRows, { onConflict: "dedupe_key", ignoreDuplicates: true });
+  // ---- hasil sinyal menurut feed (Riwayat Sinyal; terpisah dari jurnal) ----
+  const { data: tracking } = await db
+    .from("setups")
+    .select("id,direction,timeframe,strategy,entry_price,sl,tp1,tp2,tp3,entry_touched_at,score,outcome,outcome_tp")
+    .eq("status", "entry_touched")
+    .eq("eligible", true)
+    .or("outcome.is.null,outcome.eq.open")
+    .limit(100);
+  for (const t of tracking ?? []) {
+    const touched = sec(t.entry_touched_at);
+    if (touched == null) continue;
+    const r = evaluateOutcome({
+      direction: t.direction,
+      entry: t.entry_price,
+      sl: t.sl,
+      tps: [t.tp1, t.tp2, t.tp3],
+      entryTouchedAtSec: touched,
+      candles: raw.M5 ?? [],
+      barSec: TF_SECONDS.M5,
+      price: out.quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? price : null,
+      nowSec: t0,
+      maxHoldSec: SIGNAL_MAX_HOLD_SEC,
+      spec: cfg.spec,
+    });
+    if (r.outcome === (t.outcome ?? "") && r.tpHit === (t.outcome_tp ?? 0)) continue;
+    await db.from("setups").update({ outcome: r.outcome, outcome_tp: r.tpHit, outcome_pips: r.pips, outcome_at: r.closedAtSec ? iso(r.closedAtSec) : null, outcome_note: r.note, outcome_ambiguous: r.ambiguous }).eq("id", t.id);
+    if (r.outcome !== "open") {
+      const label = r.outcome === "win" ? "WIN" : r.outcome === "loss" ? "LOSS" : "TIMEOUT";
+      notifRows.push({
+        kind: "signal_result",
+        dedupe_key: `result:${t.id}`,
+        title: `${label} ${t.direction} XAUUSD ${t.timeframe} ${r.pips != null ? (r.pips > 0 ? "+" : "") + r.pips.toFixed(1) + " pips" : ""}`.trim(),
+        body: `${r.note} Hasil level sinyal menurut feed, bukan transaksi Anda.`,
+        severity: r.outcome === "win" ? "success" : r.outcome === "loss" ? "danger" : "warning",
+        setup_id: t.id,
+        score: t.score,
+        timeframe: t.timeframe,
+      });
+    }
+  }
+
+  let inserted: typeof notifRows = [];
+  if (notifRows.length) {
+    const { data: ins } = await db.from("notifications").upsert(notifRows, { onConflict: "dedupe_key", ignoreDuplicates: true }).select("kind,title,body,severity,setup_id,score,timeframe");
+    inserted = (ins ?? []) as typeof notifRows;
+  }
+  try {
+    await deliverPush(db, inserted, price, cfg, t0);
+  } catch (e) {
+    console.error("push", (e as Error).message);
+  }
 
   state.provider = provider.id;
   state.last_run_at = new Date().toISOString();
@@ -443,6 +497,94 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     fetched: fetchInfo,
     error: lastError,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Web Push (HP/desktop, walau tab ditutup). Kunci privat VAPID hanya di Vault.
+// ---------------------------------------------------------------------------
+interface PushTarget { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; failures: number }
+interface PushPrefs { user_id: string; notify_kinds: Record<string, boolean>; min_score: Record<string, number>; near_entry_pips: number; pip_size: number }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WebPush = any;
+let webpushMod: WebPush | null = null;
+async function loadWebPush(): Promise<WebPush> {
+  // impor dinamis: bila library push gagal dimuat, siklus analisis tetap berjalan
+  if (!webpushMod) webpushMod = (await import("npm:web-push@3.6.7")).default;
+  return webpushMod;
+}
+
+async function vapid(db: Db): Promise<{ public: string; private: string }> {
+  const webpush = await loadWebPush();
+  const { data } = await db.rpc("vapid_get");
+  if (data?.public && data?.private) return data;
+  const keys = webpush.generateVAPIDKeys();
+  await db.rpc("vapid_set", { p_public: keys.publicKey, p_private: keys.privateKey });
+  const { data: again } = await db.rpc("vapid_get");
+  return again;
+}
+
+async function deliverPush(db: Db, fresh: { kind: string; title: string; body: string; setup_id: string | null; score: number | null; timeframe: string | null }[], price: number | null, cfg: EngineConfig, nowSec: number) {
+  const { data: subs } = await db.from("push_subscriptions").select("id,user_id,endpoint,p256dh,auth,failures").limit(1000);
+  if (!subs?.length) {
+    await vapid(db); // pastikan kunci publik tersedia untuk klien
+    return;
+  }
+  const users = [...new Set(subs.map((s) => s.user_id))];
+  const { data: prefRows } = await db.from("user_settings").select("user_id,notify_kinds,min_score,near_entry_pips,pip_size").in("user_id", users);
+  const prefs = new Map((prefRows ?? []).map((p) => [p.user_id, { ...p, near_entry_pips: Number(p.near_entry_pips), pip_size: Number(p.pip_size) } as PushPrefs]));
+  const keys = await vapid(db);
+  const webpush = await loadWebPush();
+  webpush.setVapidDetails("mailto:noreply@goldmarket.app", keys.public, keys.private);
+
+  const queue: { userId: string; payload: Record<string, unknown> }[] = [];
+  for (const uid of users) {
+    const p = prefs.get(uid);
+    const kinds = p?.notify_kinds ?? {};
+    for (const n of fresh) {
+      if (kinds[n.kind] === false) continue;
+      if (n.kind === "new_setup" && n.score != null && n.timeframe && n.score < (p?.min_score?.[n.timeframe] ?? 60)) continue;
+      queue.push({ userId: uid, payload: { title: n.title, body: n.body, tag: `${n.kind}:${n.setup_id ?? ""}`, url: APP_URL + (n.setup_id ? "opportunities/" : "") } });
+    }
+  }
+
+  // Uji push dari server (diminta pengguna lewat tombol; baris dihapus setelah diproses)
+  const { data: tests } = await db.from("user_alerts").select("user_id,dedupe_key").like("dedupe_key", "pushtest:%").gte("created_at", iso(nowSec - 600));
+  for (const t of tests ?? []) {
+    queue.push({ userId: t.user_id, payload: { title: "GOLDMARKET — uji push server", body: "Push dari server berhasil sampai ke perangkat ini.", tag: "pushtest", url: APP_URL + "settings/" } });
+    await db.from("user_alerts").delete().eq("user_id", t.user_id).eq("dedupe_key", t.dedupe_key);
+  }
+
+  // "Harga mendekati entry" per pengguna (ambang masing-masing), dedupe via user_alerts
+  if (price != null) {
+    const { data: near } = await db.from("setups").select("id,direction,timeframe,entry_price,score").eq("status", "approaching").eq("eligible", true).limit(50);
+    for (const uid of users) {
+      const p = prefs.get(uid);
+      if (!p || p.notify_kinds?.near_entry === false) continue;
+      for (const s of near ?? []) {
+        if (s.score < (p.min_score?.[s.timeframe] ?? 60)) continue;
+        const dist = Math.abs(price - s.entry_price) / (p.pip_size || cfg.spec.pipSize);
+        if (dist > p.near_entry_pips) continue;
+        const { error } = await db.from("user_alerts").insert({ user_id: uid, dedupe_key: `near:${s.id}` });
+        if (error) continue; // sudah pernah diberi tahu
+        queue.push({ userId: uid, payload: { title: `Harga mendekati entry — ${s.direction} ${s.timeframe}`, body: `Jarak ${dist.toFixed(1)} pips ke entry ${Number(s.entry_price).toFixed(2)}. Pemicu jarak, bukan jaminan peringatan sebelum entry tersentuh.`, tag: `near:${s.id}`, url: APP_URL + "opportunities/" } });
+      }
+    }
+  }
+
+  for (const q of queue.slice(0, 200)) {
+    for (const sub of subs.filter((s) => s.user_id === q.userId) as PushTarget[]) {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(q.payload), { TTL: 600, urgency: "high" });
+        await db.from("push_subscriptions").update({ last_ok_at: iso(nowSec), failures: 0 }).eq("id", sub.id);
+      } catch (e) {
+        const code = (e as { statusCode?: number }).statusCode;
+        if (code === 404 || code === 410 || sub.failures >= 5) await db.from("push_subscriptions").delete().eq("id", sub.id);
+        else await db.from("push_subscriptions").update({ failures: sub.failures + 1 }).eq("id", sub.id);
+      }
+    }
+  }
 }
 
 async function backtest(db: Db, cfg: EngineConfig, pid: string) {
