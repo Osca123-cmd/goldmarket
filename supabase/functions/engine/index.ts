@@ -695,6 +695,18 @@ async function news(db: Db) {
   const t0 = Math.floor(Date.now() / 1000);
   const feeds: Record<string, number | string> = {};
 
+  // ---- retensi (lebih dulu, agar berita yang dibuang tidak dianggap "sudah ada"): berita > 7 hari, event > 14 hari, rilis Fed non-kebijakan ----
+  await db.from("news_items").delete().lt("created_at", iso(t0 - 7 * 86400));
+  await db.from("econ_events").delete().lt("time_at", iso(t0 - 14 * 86400));
+  await db.from("news_items").delete().eq("feed", "fed_press").not("title", "imatch", FED_POLICY.source.replace(/\\b/g, "\\y"));
+  await db.from("news_items").delete().is("topic", null); // di luar FOMC/NFP/CPI/PPI
+  await db.from("econ_events").delete().is("topic", null);
+
+  // event kalender yang kini di luar fokus (mis. pidato anggota FOMC)
+  const { data: evRows } = await db.from("econ_events").select("event_key,title");
+  const offTopic = (evRows ?? []).filter((e) => !calendarTopic(e.title)).map((e) => e.event_key);
+  if (offTopic.length) await db.from("econ_events").delete().in("event_key", offTopic);
+
   // ---- berita ----
   const settled = await Promise.allSettled(NEWS_FEEDS.map(async (f) => ({ f, items: parseRss(await fetchText(f.url), f.label) })));
   const all: { item: ReturnType<typeof parseRss>[number]; feed: string }[] = [];
@@ -755,13 +767,6 @@ async function news(db: Db) {
     const { error } = await db.from("news_items").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
     if (error) throw new Error(`news_items: ${error.message}`);
   }
-
-  // ---- retensi: berita > 7 hari, event > 14 hari, rilis Fed non-kebijakan ----
-  await db.from("news_items").delete().lt("created_at", iso(t0 - 7 * 86400));
-  await db.from("econ_events").delete().lt("time_at", iso(t0 - 14 * 86400));
-  await db.from("news_items").delete().eq("feed", "fed_press").not("title", "imatch", FED_POLICY.source.replace(/\\b/g, "\\y"));
-  await db.from("news_items").delete().is("topic", null); // di luar FOMC/NFP/CPI/PPI
-  await db.from("econ_events").delete().is("topic", null);
 
   // ---- kalender ekonomi: maksimal sekali per jam (hormati sumber gratis) ----
   let calendar: number | string = "cached";

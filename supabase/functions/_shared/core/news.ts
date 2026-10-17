@@ -297,7 +297,8 @@ export function newsTopic(title: string, snippet = ""): KeyTopic | null {
  */
 export function calendarTopic(title: string): KeyTopic | null {
   const t = title.trim().toLowerCase();
-  if (/^(?:fomc\b|federal funds rate)/.test(t)) return "FOMC";
+  // FOMC = keputusan & dokumen rapat; pidato anggota ("FOMC Member X Speaks") tidak termasuk
+  if (/^(?:federal funds rate|fomc (?:statement|press conference|meeting minutes|economic projections))/.test(t)) return "FOMC";
   if (/^(?:non-farm employment change|unemployment rate|average hourly earnings)/.test(t)) return "NFP";
   if (/^(?:core )?cpi\b/.test(t)) return "CPI";
   if (/^(?:core )?ppi\b/.test(t)) return "PPI";

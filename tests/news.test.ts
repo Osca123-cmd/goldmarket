@@ -168,6 +168,10 @@ describe("topic focus: FOMC, NFP, CPI, PPI", () => {
     expect(calendarTopic("FOMC Meeting Minutes")).toBe("FOMC");
     expect(calendarTopic("Retail Sales m/m")).toBeNull();
     expect(calendarTopic("Fed Chairman Warsh Speaks")).toBeNull();
+    expect(calendarTopic("FOMC Member Waller Speaks")).toBeNull();
+    expect(calendarTopic("FOMC Statement")).toBe("FOMC");
+    expect(calendarTopic("FOMC Press Conference")).toBe("FOMC");
+    expect(calendarTopic("FOMC Economic Projections")).toBe("FOMC");
     expect(calendarTopic("Unemployment Claims")).toBeNull();
   });
 });
