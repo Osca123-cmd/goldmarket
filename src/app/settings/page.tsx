@@ -200,7 +200,7 @@ function SettingsPage() {
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {KINDS.map(([k, l]) => (
             <label key={k} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="accent-[#d6b25e]" checked={kinds[k] !== false} onChange={(e) => setKinds({ ...kinds, [k]: e.target.checked })} />
+              <input type="checkbox" className="accent-[#e8b84c]" checked={kinds[k] !== false} onChange={(e) => setKinds({ ...kinds, [k]: e.target.checked })} />
               {l}
             </label>
           ))}

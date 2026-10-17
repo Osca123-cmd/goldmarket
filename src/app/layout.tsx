@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Platform analisis XAUUSD: data pasar, setup otomatis, kalkulator risiko, notifikasi, dan jurnal trading. Informasional, bukan eksekusi order.",
 };
 
-export const viewport: Viewport = { themeColor: "#0a0e16", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#050a1a", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,35 +1,74 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0a0e16;
-  --color-surface: #111723;
-  --color-surface-2: #172031;
-  --color-line: #243047;
-  --color-ink: #e8ecf3;
-  --color-muted: #93a0b8;
-  --color-gold: #d6b25e;
-  --color-gold-strong: #f0c96b;
+  /* Navy biru + emas */
+  --color-bg: #050a1a;
+  --color-surface: #0b1430;
+  --color-surface-2: #111d42;
+  --color-line: #1d2b5a;
+  --color-ink: #eef2ff;
+  --color-muted: #8e9cc9;
+  --color-gold: #e8b84c;
+  --color-gold-strong: #ffd36a;
+  --color-gold-deep: #b8862b;
+  --color-blue: #2f6bff;
+  --color-blue-strong: #5b8cff;
+  --color-blue-deep: #1a3fb8;
   --color-buy: #22c58b;
   --color-sell: #f0506e;
   --color-warn: #f5a524;
-  --color-info: #5aa9ff;
+  --color-info: #5b8cff;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root { color-scheme: dark; }
 html, body { background: var(--color-bg); color: var(--color-ink); }
-body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* cahaya biru di atas, kilau emas di kanan bawah */
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgb(47 107 255 / 0.18), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgb(232 184 76 / 0.10), transparent 60%);
+  background-attachment: fixed;
+}
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-@utility card { @apply rounded-2xl border border-line bg-surface p-4 sm:p-5; }
-@utility card-title { @apply text-xs font-semibold uppercase tracking-wider text-muted; }
+@utility card {
+  @apply rounded-2xl border border-line/80 p-4 sm:p-5;
+  background: linear-gradient(180deg, rgb(17 29 66 / 0.72), rgb(11 20 48 / 0.82));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -18px rgb(0 0 0 / 0.8);
+  backdrop-filter: blur(8px);
+}
+@utility card-hero {
+  @apply rounded-3xl border border-blue/30 p-5 sm:p-6;
+  background:
+    radial-gradient(600px 240px at 0% 0%, rgb(47 107 255 / 0.35), transparent 70%),
+    radial-gradient(500px 220px at 100% 100%, rgb(232 184 76 / 0.16), transparent 70%),
+    linear-gradient(180deg, #0f1b45, #0a1330);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 20px 50px -24px rgb(47 107 255 / 0.55);
+}
+@utility card-title { @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted; }
+@utility text-gold-gradient {
+  background: linear-gradient(180deg, #ffe39a 0%, #e8b84c 55%, #b8862b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility text-blue-gradient {
+  background: linear-gradient(90deg, #9cc0ff, #5b8cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 @utility btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
-@utility btn-gold { @apply btn bg-gold text-bg hover:bg-gold-strong; }
-@utility btn-ghost { @apply btn border border-line bg-surface-2 text-ink hover:border-gold/60; }
+@utility btn-gold { @apply btn text-bg; background: linear-gradient(180deg, #ffd36a, #e8b84c); box-shadow: 0 6px 20px -8px rgb(232 184 76 / 0.7); &:hover { filter: brightness(1.06); } }
+@utility btn-blue { @apply btn text-white; background: linear-gradient(180deg, #5b8cff, #2f6bff); box-shadow: 0 6px 20px -8px rgb(47 107 255 / 0.8); &:hover { filter: brightness(1.08); } }
+@utility btn-ghost { @apply btn border border-line bg-surface-2/80 text-ink hover:border-blue-strong/60 hover:bg-surface-2; }
 @utility btn-buy { @apply btn border border-buy/40 bg-buy/15 text-buy hover:bg-buy/25; }
 @utility btn-sell { @apply btn border border-sell/40 bg-sell/15 text-sell hover:bg-sell/25; }
-@utility input { @apply w-full min-w-0 rounded-xl border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-gold disabled:opacity-60; }
+@utility input { @apply w-full min-w-0 rounded-xl border border-line bg-bg/70 px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-blue-strong focus:ring-2 focus:ring-blue/25 disabled:opacity-60; }
 @utility label { @apply mb-1 block text-xs font-medium text-muted; }
 @utility chip { @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium; }
 

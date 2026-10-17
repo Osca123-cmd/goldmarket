@@ -91,7 +91,7 @@ export function Card({ title, action, children, className }: { title?: ReactNode
 
 export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: "buy" | "sell" | "gold" }) {
   return (
-    <div className="min-w-0 rounded-xl border border-line/70 bg-surface-2/60 p-3">
+    <div className="min-w-0 rounded-xl border border-blue/15 bg-[#0a1435]/70 p-3">
       <div className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</div>
       <div className={cx("num mt-1 break-words text-base font-semibold leading-snug sm:text-lg", tone === "buy" && "text-buy", tone === "sell" && "text-sell", tone === "gold" && "text-gold")}>{value}</div>
       {sub && <div className="mt-0.5 truncate text-xs text-muted">{sub}</div>}

@@ -209,7 +209,7 @@ function LiveSignal() {
           <h1 className="text-xs font-bold uppercase tracking-[0.2em] text-ink/80">Live Signal</h1>
         </header>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
-          <span className="rounded-full bg-gradient-to-r from-gold-strong to-[#b8892f] px-5 py-2 text-sm font-extrabold tracking-wide text-bg shadow-[0_0_24px_rgba(214,178,94,.35)]">INTRADAY · M15 / H1</span>
+          <span className="rounded-full bg-gradient-to-r from-gold-strong to-gold-deep px-5 py-2 text-sm font-extrabold tracking-wide text-bg shadow-[0_0_24px_rgba(232,184,76,.35)]">INTRADAY · M15 / H1</span>
           <MonitorBadge m={mon} />
         </div>
 

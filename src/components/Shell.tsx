@@ -10,6 +10,7 @@ import { effectiveStatus } from "@/lib/market";
 import { MarketProvider, useMarket } from "./MarketContext";
 import { NotificationCenter } from "./NotificationCenter";
 import { StatusBadge, cx, fmt, useNow } from "./ui";
+import { Logo } from "./Logo";
 
 const NAV = [
   { href: "/", label: "Dashboard", short: "Home", icon: "M3 12l9-8 9 8M5 10v10h14V10" },
@@ -30,23 +31,7 @@ function Icon({ d, className }: { d: string; className?: string }) {
   );
 }
 
-export function Logo({ className }: { className?: string }) {
-  return (
-    <div className={cx("flex items-center gap-2", className)}>
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden>
-        <defs>
-          <linearGradient id="gm-g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#f6d98b" />
-            <stop offset="1" stopColor="#b8892f" />
-          </linearGradient>
-        </defs>
-        <path d="M4 22 L10 10 H22 L28 22 Z" fill="url(#gm-g)" />
-        <path d="M10 10 L13 22 M22 10 L19 22" stroke="#0a0e16" strokeWidth="1.2" opacity=".55" />
-      </svg>
-      <span className="text-lg font-extrabold tracking-[0.18em] text-gold">GOLDMARKET</span>
-    </div>
-  );
-}
+export { Logo } from "./Logo";
 
 function TopBar() {
   const { snapshot, channel } = useMarket();
@@ -54,12 +39,12 @@ function TopBar() {
   const status = effectiveStatus(snapshot, now);
   const up = (snapshot?.day_change ?? 0) >= 0;
   return (
-    <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-bg/85 px-4 py-3 backdrop-blur lg:px-6">
+    <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line/70 bg-bg/70 px-4 py-3 backdrop-blur-xl lg:px-6">
       <Logo className="lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:justify-start">
         <div className="hidden min-w-0 items-baseline gap-2 sm:flex">
-          <span className="text-xs text-muted">XAUUSD</span>
-          <span className="num text-base font-semibold">{fmt(snapshot?.price)}</span>
+          <span className="text-xs font-semibold tracking-wider text-blue-strong">XAUUSD</span>
+          <span className="num text-gold-gradient text-base font-bold">{fmt(snapshot?.price)}</span>
           {snapshot?.day_change_pct != null && (
             <span className={cx("num text-xs", up ? "text-buy" : "text-sell")}>
               {up ? "+" : ""}
@@ -80,11 +65,11 @@ function TopBar() {
 function Sidebar({ onSignOut, email }: { onSignOut: () => void; email: string }) {
   const path = usePathname();
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface lg:flex">
-      <div className="px-5 py-5">
-        <Logo />
-        <p className="mt-1 text-[11px] text-muted">Analisis XAUUSD — informasional</p>
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line/70 bg-[linear-gradient(180deg,#0c1638_0%,#081029_60%,#070d22_100%)] lg:flex">
+      <div className="px-5 py-6">
+        <Logo tagline />
       </div>
+      <div className="mx-5 mb-3 h-px bg-gradient-to-r from-blue/50 via-gold/40 to-transparent" />
       <nav className="flex-1 space-y-1 px-3" aria-label="Menu utama">
         {NAV.map((n) => {
           const active = n.href === "/" ? path === "/" : path?.startsWith(n.href.replace(/\/$/, ""));
@@ -92,15 +77,19 @@ function Sidebar({ onSignOut, email }: { onSignOut: () => void; email: string })
             <Link
               key={n.href}
               href={n.href}
-              className={cx("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition", active ? "bg-gold/10 text-gold" : "text-muted hover:bg-surface-2 hover:text-ink")}
+              className={cx(
+                "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                active ? "bg-gradient-to-r from-blue/30 via-blue/10 to-transparent text-ink shadow-[inset_0_0_0_1px_rgb(91_140_255/0.25)]" : "text-muted hover:bg-surface-2/70 hover:text-ink",
+              )}
             >
-              <Icon d={n.icon} />
+              {active && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-gold-strong to-gold-deep" />}
+              <Icon d={n.icon} className={active ? "text-gold" : undefined} />
               {n.label}
             </Link>
           );
         })}
       </nav>
-      <div className="border-t border-line p-4 text-xs text-muted">
+      <div className="m-3 rounded-xl border border-line/70 bg-surface-2/50 p-3 text-xs text-muted">
         <div className="truncate" title={email}>
           {email}
         </div>
@@ -119,11 +108,12 @@ function MobileNav() {
   const rest = NAV.slice(4);
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Navigasi mobile">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line/70 bg-[#081029]/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Navigasi mobile">
         {main.map((n) => {
           const active = n.href === "/" ? path === "/" : path?.startsWith(n.href.replace(/\/$/, ""));
           return (
-            <Link key={n.href} href={n.href} className={cx("flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium", active ? "text-gold" : "text-muted")}>
+            <Link key={n.href} href={n.href} className={cx("relative flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium", active ? "text-gold" : "text-muted")}>
+              {active && <span className="absolute inset-x-6 top-0 h-0.5 rounded-b-full bg-gradient-to-r from-blue-strong to-gold" />}
               <Icon d={n.icon} />
               {n.short}
             </Link>

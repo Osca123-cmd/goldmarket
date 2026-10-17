@@ -163,8 +163,8 @@ function Equity({ points }: { points: number[] }) {
   const d = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-48 w-full" preserveAspectRatio="none" role="img" aria-label="Kurva ekuitas">
-      <line x1="0" x2={w} y1={y(0)} y2={y(0)} stroke="#243047" strokeDasharray="4 4" />
-      <path d={d} fill="none" stroke="#d6b25e" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <line x1="0" x2={w} y1={y(0)} y2={y(0)} stroke="#1d2b5a" strokeDasharray="4 4" />
+      <path d={d} fill="none" stroke="#e8b84c" strokeWidth="2" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

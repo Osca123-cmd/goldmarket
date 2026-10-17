@@ -171,7 +171,7 @@ for (const vp of viewports) {
     if (p === "/journal/") await page.locator("section button.w-full").first().click().catch(() => {});
     await page.waitForTimeout(500);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    if (bg !== "rgb(10, 14, 22)") problems.push(`${vp.name} ${p}: stylesheet tidak termuat (bg ${bg})`);
+    if (bg !== "rgb(5, 10, 26)") problems.push(`${vp.name} ${p}: stylesheet tidak termuat (bg ${bg})`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     if (overflow > 1) {
       const culprits = await page.evaluate(() => {

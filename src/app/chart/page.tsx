@@ -28,7 +28,7 @@ export default function Page() {
   );
 }
 
-const C = { buy: "#22c58b", sell: "#f0506e", gold: "#d6b25e", info: "#5aa9ff", muted: "#93a0b8", line: "#243047", ema20: "#5aa9ff", ema50: "#d6b25e", ema200: "#b36bff" };
+const C = { buy: "#22c58b", sell: "#f0506e", gold: "#e8b84c", info: "#5b8cff", muted: "#8e9cc9", line: "#1d2b5a", ema20: "#5b8cff", ema50: "#e8b84c", ema200: "#b36bff" };
 
 type Toggles = { ema20: boolean; ema50: boolean; ema200: boolean; rsi: boolean; atr: boolean; sr: boolean; setup: boolean };
 
@@ -100,7 +100,7 @@ function ChartPage() {
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                 {(Object.keys(toggles) as (keyof Toggles)[]).map((k) => (
                   <label key={k} className="flex items-center gap-1 text-muted">
-                    <input type="checkbox" className="accent-[#d6b25e]" checked={toggles[k]} onChange={(e) => setToggles({ ...toggles, [k]: e.target.checked })} />
+                    <input type="checkbox" className="accent-[#e8b84c]" checked={toggles[k]} onChange={(e) => setToggles({ ...toggles, [k]: e.target.checked })} />
                     {{ ema20: "EMA 20", ema50: "EMA 50", ema200: "EMA 200", rsi: "RSI 14", atr: "ATR 14", sr: "S/R", setup: "Level setup" }[k]}
                   </label>
                 ))}
@@ -208,7 +208,7 @@ function LwChart({
     if (!ref.current) return;
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "#111723" }, textColor: C.muted, fontFamily: "Inter, sans-serif", panes: { separatorColor: C.line } },
+      layout: { background: { type: ColorType.Solid, color: "#0b1430" }, textColor: C.muted, fontFamily: "Inter, sans-serif", panes: { separatorColor: C.line } },
       grid: { vertLines: { color: "#1a2333" }, horzLines: { color: "#1a2333" } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: C.line },

@@ -79,9 +79,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4">
-        <div className="card">
-          <Logo />
-          <h1 className="mt-4 text-xl font-bold">{TITLES[mode]}</h1>
+        <div className="card-hero">
+          <Logo tagline />
+          <h1 className="mt-5 text-xl font-bold">{TITLES[mode]}</h1>
           {!isConfigured && <p className="mt-2 text-sm text-sell">Supabase belum dikonfigurasi pada build ini.</p>}
           <form className="mt-4 space-y-3" onSubmit={submit} noValidate>
             {mode !== "reset" && (
