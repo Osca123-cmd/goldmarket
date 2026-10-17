@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { MGMT_LABEL, MGMT_VARIANTS, type BtGroupStats, type MgmtVariant, type StrategyReport, type VariantStats } from "@/core/backtest";
+import { MGMT_LABEL, MGMT_VARIANTS, pickVariant, type BtGroupStats, type MgmtVariant, type StrategyReport, type VariantStats } from "@/core/backtest";
 import { STRATEGY_LABEL } from "@/core/config";
 import { Card, Empty, cx, fmt } from "./ui";
 
@@ -16,6 +16,7 @@ interface ReportRow {
 
 const SESSION_LABEL: Record<string, string> = { asia: "Asia (Tokyo)", london: "London", newyork: "New York", off: "Di luar sesi utama" };
 const TARGET_CHUNKS = 52; // ±12 bulan potongan 7 hari
+const TARGET_WR = 0.75;
 
 function groupLabel(key: string): string {
   if (key === "all") return "Semua setup";
@@ -49,8 +50,11 @@ function VariantCard({ v, s, best }: { v: MgmtVariant; s: VariantStats; best: bo
   return (
     <div className={cx("min-w-0 rounded-2xl border p-4", best ? "border-gold/50 bg-gold/5" : "border-blue/20 bg-[#0a1435]/70")}>
       <div className="flex items-center gap-2">
-        <span className={cx("grid h-7 w-7 place-items-center rounded-lg text-sm font-extrabold", best ? "bg-gold text-bg" : "bg-blue/20 text-blue-strong")}>{v}</span>
-        <span className="min-w-0 text-sm font-semibold">{MGMT_LABEL[v]}</span>
+        <span className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm font-extrabold", best ? "bg-gold text-bg" : "bg-blue/20 text-blue-strong")}>{v}</span>
+        <span className="min-w-0 flex-1 text-sm font-semibold">{MGMT_LABEL[v]}</span>
+        <span className={cx("num shrink-0 rounded-lg px-2 py-0.5 text-sm font-bold", (s.winRate.p ?? 0) >= TARGET_WR ? "bg-buy/15 text-buy" : "bg-surface-2 text-ink")} title="Win rate (trade dengan P/L > 0)">
+          WR {pct(s.winRate.p)}
+        </span>
       </div>
       <div className={cx("num mt-3 text-2xl font-bold", s.expPips == null ? "text-muted" : pos ? "text-buy" : "text-sell")}>
         {signed(s.expPips)} <span className="text-sm font-medium text-muted">pips/trade</span>
@@ -70,6 +74,36 @@ function VariantCard({ v, s, best }: { v: MgmtVariant; s: VariantStats; best: bo
         <dt className="text-muted">Max drawdown</dt>
         <dd className="num text-right text-sell">−{fmt(s.maxDrawdownPips, 1)} pips</dd>
       </dl>
+    </div>
+  );
+}
+
+/** Target win rate tinggi: varian dipilih dari data pengembangan, dibuktikan di data uji. */
+function TargetWinRate({ report }: { report: StrategyReport }) {
+  const pick = pickVariant(report, TARGET_WR);
+  if (!pick) return null;
+  const label = `Varian ${pick.variant} (“${MGMT_LABEL[pick.variant]}”)`;
+  const dev = `WR ${pct(pick.dev.winRate.p)}, ${signed(pick.dev.expPips)} pips/trade`;
+  const test = pick.test ? `WR ${pct(pick.test.winRate.p)}, ${signed(pick.test.expPips)} pips/trade (interval ${signed(pick.test.expLo)}…${signed(pick.test.expHi)}, n=${pick.test.n})` : "—";
+  let tone: "buy" | "warn" | "sell" = "warn";
+  let text: string;
+  if (!pick.meetsTarget) {
+    text = `Belum ada varian yang mencapai win rate ≥${pct(TARGET_WR)} dengan ekspektasi positif di data pengembangan. Ekspektasi terbaik: ${label} — ${dev}.`;
+  } else if (pick.verdict === "terbukti") {
+    tone = "buy";
+    text = `${label} dipilih dari data pengembangan (${dev}) dan TERBUKTI di data uji: ${test}.`;
+  } else if (pick.verdict === "positif") {
+    text = `${label} dipilih dari data pengembangan (${dev}). Di data uji: ${test} — masih positif, tetapi belum memenuhi target win rate atau belum signifikan secara statistik.`;
+  } else if (pick.verdict === "gagal") {
+    tone = "sell";
+    text = `${label} dipilih dari data pengembangan (${dev}), tetapi GAGAL di data uji: ${test}. Kemungkinan hasil pengembangan kebetulan (overfitting) — jangan dipakai.`;
+  } else {
+    text = `${label} dipilih dari data pengembangan (${dev}); sampel data uji belum cukup untuk membuktikan (${test}).`;
+  }
+  return (
+    <div className={cx("rounded-2xl border p-4 text-sm", tone === "buy" ? "border-buy/40 bg-buy/5 text-buy" : tone === "sell" ? "border-sell/40 bg-sell/5 text-sell" : "border-warn/40 bg-warn/5 text-warn")}>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">Target win rate ≥{pct(TARGET_WR)} (tanpa mengurangi jumlah sinyal)</div>
+      {text}
     </div>
   );
 }
@@ -124,6 +158,8 @@ export function BacktestPanel() {
         {rec.text}
       </div>
 
+      <TargetWinRate report={r} />
+
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="card-title mr-auto">Perbandingan manajemen posisi · {set === "test" ? "data uji (out-of-sample)" : "data pengembangan"}</h2>
         {(["test", "dev"] as const).map((k) => (
@@ -133,7 +169,7 @@ export function BacktestPanel() {
         ))}
       </div>
       {all ? (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {MGMT_VARIANTS.map((v) => (
             <VariantCard key={v} v={v} s={all.variants[v]} best={v === best && (all.variants[v].expPips ?? 0) > 0} />
           ))}
@@ -152,9 +188,9 @@ export function BacktestPanel() {
                 <th>Entry tersentuh</th>
                 <th>TP1 sebelum SL</th>
                 <th>TP2</th>
-                <th>E[A]</th>
-                <th>E[B]</th>
-                <th>E[C]</th>
+                {MGMT_VARIANTS.map((v) => (
+                  <th key={v}>E[{v}]</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -184,8 +220,9 @@ export function BacktestPanel() {
           </table>
         </div>
         <ul className="mt-3 space-y-1 text-xs text-muted">
-          <li>• E[A/B/C] = ekspektasi pips per trade (biaya termasuk) untuk setup yang entry-nya tersentuh dan hasilnya tuntas.</li>
+          <li>• E[A–F] = ekspektasi pips per trade (biaya termasuk) untuk setup yang entry-nya tersentuh dan hasilnya tuntas.</li>
           <li>• A = seluruh posisi di TP1/SL · B = 1/3 di TP1, TP2, TP3 dengan SL tetap · C = seperti B, SL sisa posisi pindah ke entry (BE) setelah TP1.</li>
+          <li>• D/E = seluruh posisi di TP cepat 0,4R / 0,6R (M15 ±20 / ±30 pips, H1 ±40 / ±60 pips) · F = 1/2 di 0,6R lalu SL ke BE, sisa ke TP2. TP dekat menaikkan win rate tetapi memperkecil kemenangan — yang menentukan tetap ekspektasi.</li>
           <li>• Rencana level: M15 SL 50 / TP 50-100-150 pips; H1 SL 100 / TP 100-200-300 pips.</li>
           <li>• Data PAXG/USDT adalah proxy emas (pergerakan relatif mirip XAUUSD, tetapi tidak identik). Grup dengan n &lt; {r.minSamples} belum layak dijadikan pegangan.</li>
         </ul>

@@ -5,6 +5,7 @@ import {
   dedupeNews,
   eventsInAlertWindow,
   explainImpact,
+  newsBlackoutAt,
   calendarTopic,
   newsTopic,
   FED_POLICY,
@@ -203,5 +204,20 @@ describe("economic calendar", () => {
     expect(eventsInAlertWindow(ev, t, 30)).toHaveLength(0); // sudah rilis
     expect(newsEventTitle(ev[0], t - 30 * 60)).toBe("⚠️ NEWS CPI 30 menit lagi: CPI m/m (USD)");
     expect(newsEventBody(ev[0])).toMatch(/^forecast 0.3%, previous 0.4%\./);
+  });
+});
+
+describe("newsBlackoutAt", () => {
+  const t = 1_800_000_000;
+  const ev = [
+    { title: "Retail Sales m/m", timeSec: t + 300 },
+    { title: "Core CPI m/m", timeSec: t + 25 * 60 },
+    { title: "FOMC Statement", timeSec: t - 20 * 60 },
+  ];
+  it("hanya topik FOMC/NFP/CPI/PPI dalam ±N menit", () => {
+    expect(newsBlackoutAt(ev, t, 30)?.title).toBe("Core CPI m/m");
+    expect(newsBlackoutAt(ev.slice(0, 1), t, 30)).toBeNull(); // Retail Sales bukan topik
+    expect(newsBlackoutAt(ev.slice(2), t, 30)?.title).toBe("FOMC Statement"); // 20 menit setelah rilis
+    expect(newsBlackoutAt(ev.slice(2), t, 15)).toBeNull();
   });
 });

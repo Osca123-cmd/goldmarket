@@ -291,6 +291,14 @@ export function newsTopic(title: string, snippet = ""): KeyTopic | null {
 }
 
 /**
+ * Event FOMC/NFP/CPI/PPI dalam ±`minutes` dari `nowSec` — jendela di mana engine
+ * tidak membuat setup baru (volatilitas & spread melonjak saat rilis).
+ */
+export function newsBlackoutAt<T extends { title: string; timeSec: number }>(events: T[], nowSec: number, minutes: number): T | null {
+  return events.find((e) => calendarTopic(e.title) !== null && Math.abs(e.timeSec - nowSec) <= minutes * 60) ?? null;
+}
+
+/**
  * Topik event kalender ForexFactory (judul persis dari feed). NFP mencakup paket
  * laporan tenaga kerja yang rilis bersamaan (Non-Farm, Unemployment Rate,
  * Average Hourly Earnings); "ADP Non-Farm" bukan NFP.

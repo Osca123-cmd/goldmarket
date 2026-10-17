@@ -37,6 +37,7 @@ import {
   FED_POLICY,
   calendarTopic,
   newsTopic,
+  newsBlackoutAt,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -383,6 +384,14 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     .limit(500);
   const existing = (existingRows ?? []).map(toStored);
 
+  // rilis FOMC/NFP/CPI/PPI ±N menit → setup baru ditahan (setup lama tetap dipantau)
+  let blackout: { title: string; timeSec: number } | null = null;
+  if (cfg.newsBlackoutMin > 0) {
+    const w = cfg.newsBlackoutMin * 60;
+    const { data: near } = await db.from("econ_events").select("title,time_at").not("topic", "is", null).gte("time_at", iso(t0 - w)).lte("time_at", iso(t0 + w)).limit(10);
+    blackout = newsBlackoutAt((near ?? []).map((e) => ({ title: e.title, timeSec: sec(e.time_at)! })), t0, cfg.newsBlackoutMin);
+  }
+
   const out = runEngineCycle({
     nowSec: t0,
     rawCandles: raw,
@@ -394,6 +403,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     previousFeedStatus: prevStatus,
     existing,
     config: cfg,
+    newsBlackout: blackout,
   });
 
   const tfSummary: Record<string, unknown> = {};
@@ -413,8 +423,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     status: out.status,
     main_bias: out.analysis.mainBias,
     strong_bias: out.analysis.strongBias,
-    quality_ok: out.quality.ok,
-    quality_reasons: out.quality.reasons,
+    quality_ok: out.quality.ok && !out.blackoutReason,
+    quality_reasons: out.blackoutReason ? [...out.quality.reasons, out.blackoutReason] : out.quality.reasons,
     reasons: out.analysis.reasons,
     timeframes: tfSummary,
     levels,
@@ -840,7 +850,7 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-18.1";
+const STRATEGY_CODE_VERSION = "2026-10-18.2"; // .2: varian D–F, blackout news
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE = "Binance — PAXG/USDT (proxy emas), jam pasar emas";

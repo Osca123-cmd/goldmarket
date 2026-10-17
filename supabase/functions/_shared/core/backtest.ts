@@ -3,7 +3,7 @@ import { TF_SECONDS } from "./types.ts";
 import { analyzeMarket } from "./analysis.ts";
 import { detectAll, type SetupCandidate } from "./strategies.ts";
 import { dedupeBatch } from "./setups.ts";
-import { pipsToPrice, priceToPips, type InstrumentSpec } from "./instrument.ts";
+import { pipsToPrice, priceToPips, roundToTick, type InstrumentSpec } from "./instrument.ts";
 import { sessionAt } from "./sessions.ts";
 import type { EngineConfig } from "./config.ts";
 
@@ -57,13 +57,37 @@ export const DEFAULT_BT: BacktestOptions = {
   maxHoldSec: 24 * 3600,
 };
 
-export type MgmtVariant = "A" | "B" | "C";
-export const MGMT_VARIANTS: MgmtVariant[] = ["A", "B", "C"];
-export const MGMT_LABEL: Record<MgmtVariant, string> = {
-  A: "TP1 penuh",
-  B: "Bertahap 1/3, SL tetap",
-  C: "Bertahap 1/3 + BE setelah TP1",
+export type MgmtVariant = "A" | "B" | "C" | "D" | "E" | "F";
+
+/** Level pada kelipatan R (jarak entry–SL) dari entry, searah posisi. */
+function atR(s: SetupCandidate, k: number, spec: InstrumentSpec): number {
+  const sign = s.direction === "BUY" ? 1 : -1;
+  return roundToTick(s.entry + sign * k * Math.abs(s.entry - s.sl), spec);
+}
+
+interface VariantDef {
+  label: string;
+  /** level target tiap kaki (posisi dibagi rata) */
+  targets: (s: SetupCandidate, spec: InstrumentSpec) => number[];
+  /** SL sisa posisi pindah ke entry setelah target pertama kena */
+  be: boolean;
+}
+
+/**
+ * Varian manajemen posisi yang dibandingkan. D–F menguji TP lebih dekat (dalam R,
+ * jadi berlaku proporsional untuk M15 dan H1) — win rate lebih tinggi, tetapi
+ * kemenangan lebih kecil; hanya ekspektasi yang menentukan mana yang lebih baik.
+ */
+export const MGMT_DEFS: Record<MgmtVariant, VariantDef> = {
+  A: { label: "TP1 penuh", targets: (s) => [s.tp1], be: false },
+  B: { label: "Bertahap 1/3, SL tetap", targets: (s) => [s.tp1, s.tp2, s.tp3], be: false },
+  C: { label: "Bertahap 1/3 + BE setelah TP1", targets: (s) => [s.tp1, s.tp2, s.tp3], be: true },
+  D: { label: "TP cepat 0,4R (M15 ±20 pips)", targets: (s, spec) => [atR(s, 0.4, spec)], be: false },
+  E: { label: "TP cepat 0,6R (M15 ±30 pips)", targets: (s, spec) => [atR(s, 0.6, spec)], be: false },
+  F: { label: "1/2 di 0,6R + BE, sisa ke TP2", targets: (s, spec) => [atR(s, 0.6, spec), s.tp2], be: true },
 };
+export const MGMT_VARIANTS = Object.keys(MGMT_DEFS) as MgmtVariant[];
+export const MGMT_LABEL = Object.fromEntries(MGMT_VARIANTS.map((v) => [v, MGMT_DEFS[v].label])) as Record<MgmtVariant, string>;
 
 export interface SimOutcome {
   setup: SetupCandidate;
@@ -197,11 +221,9 @@ export function simulate(s: SetupCandidate, future: Candle[], spec: InstrumentSp
   }
   out.tp = done as SimOutcome["tp"];
 
-  const a = runLegs(s, future, fillIdx, fill, [s.tp1], false, spec, o.maxHoldSec);
-  const b = runLegs(s, future, fillIdx, fill, tps, false, spec, o.maxHoldSec);
-  const c = runLegs(s, future, fillIdx, fill, tps, true, spec, o.maxHoldSec);
-  out.ambiguous ||= a.ambiguous || b.ambiguous || c.ambiguous;
-  out.pips = a.pips != null && b.pips != null && c.pips != null ? { A: a.pips, B: b.pips, C: c.pips } : null;
+  const res = MGMT_VARIANTS.map((v) => [v, runLegs(s, future, fillIdx, fill, MGMT_DEFS[v].targets(s, spec), MGMT_DEFS[v].be, spec, o.maxHoldSec)] as const);
+  out.ambiguous ||= res.some(([, r]) => r.ambiguous);
+  out.pips = res.every(([, r]) => r.pips != null) ? (Object.fromEntries(res.map(([v, r]) => [v, r.pips!])) as Record<MgmtVariant, number>) : null;
   return out;
 }
 
@@ -397,7 +419,7 @@ export interface StrategyReport {
 }
 
 export function variantStats(trades: BacktestTrade[], v: MgmtVariant): VariantStats {
-  const done = trades.filter((t) => t.entryTouched && t.pips != null).sort((a, b) => a.createdAt - b.createdAt);
+  const done = trades.filter((t) => t.entryTouched && typeof t.pips?.[v] === "number").sort((a, b) => a.createdAt - b.createdAt);
   const xs = done.map((t) => t.pips![v]);
   const n = xs.length;
   const total = xs.reduce((a, b) => a + b, 0);
@@ -434,7 +456,7 @@ function groupStats(key: string, list: BacktestTrade[]): BtGroupStats {
     key,
     setups: list.length,
     probabilities: probabilities(list),
-    variants: { A: variantStats(list, "A"), B: variantStats(list, "B"), C: variantStats(list, "C") },
+    variants: Object.fromEntries(MGMT_VARIANTS.map((v) => [v, variantStats(list, v)])) as Record<MgmtVariant, VariantStats>,
   };
 }
 
@@ -500,4 +522,37 @@ export function nextChunk(
     if (!final && nowSec - at >= refreshSec) return s;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Pemilihan varian yang jujur: dipilih dari data PENGEMBANGAN, dibuktikan di data UJI
+// ---------------------------------------------------------------------------
+export interface VariantPick {
+  variant: MgmtVariant;
+  /** memenuhi target win rate & ekspektasi positif di data pengembangan */
+  meetsTarget: boolean;
+  dev: VariantStats;
+  test: VariantStats | null;
+  /** hasil di data uji: terbukti (WR ≥ target & interval ekspektasi > 0), positif (belum signifikan), atau gagal */
+  verdict: "terbukti" | "positif" | "gagal" | "sampel_kurang";
+}
+
+/**
+ * Pilih varian dengan ekspektasi tertinggi di antara varian yang di data
+ * pengembangan punya win rate ≥ `targetWr`, ekspektasi > 0, dan n cukup.
+ * Bila tidak ada, pilih ekspektasi tertinggi (meetsTarget = false). Data uji
+ * TIDAK dipakai untuk memilih — hanya untuk membuktikan.
+ */
+export function pickVariant(report: StrategyReport, targetWr = 0.75): VariantPick | null {
+  const dev = report.dev.find((g) => g.key === "all");
+  const test = report.test.find((g) => g.key === "all");
+  if (!dev) return null;
+  const ok = (st: VariantStats) => st.n >= report.minSamples && (st.expPips ?? -Infinity) > 0;
+  const byExp = (a: MgmtVariant, b: MgmtVariant) => (dev.variants[b].expPips ?? -Infinity) - (dev.variants[a].expPips ?? -Infinity);
+  const eligible = MGMT_VARIANTS.filter((v) => dev.variants[v] && ok(dev.variants[v]) && (dev.variants[v].winRate.p ?? 0) >= targetWr).sort(byExp);
+  const variant = eligible[0] ?? MGMT_VARIANTS.filter((v) => dev.variants[v]).sort(byExp)[0];
+  const t = test?.variants[variant] ?? null;
+  const verdict: VariantPick["verdict"] =
+    !t || t.n < report.minSamples ? "sampel_kurang" : (t.expLo ?? -1) > 0 && (t.winRate.p ?? 0) >= targetWr ? "terbukti" : (t.expPips ?? 0) > 0 ? "positif" : "gagal";
+  return { variant, meetsTarget: eligible.length > 0, dev: dev.variants[variant], test: t, verdict };
 }

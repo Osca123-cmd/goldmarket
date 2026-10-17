@@ -166,6 +166,9 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 | A — TP1 penuh | Seluruh posisi keluar di TP1 atau SL. |
 | B — Bertahap 1/3, SL tetap | 1/3 posisi keluar di TP1, TP2, TP3; sisa kena SL. |
 | C — Bertahap 1/3 + BE setelah TP1 | Seperti B, tetapi setelah TP1 SL sisa posisi pindah ke entry. BE aktif mulai bar berikutnya, karena urutan di dalam bar tidak diketahui; keluar di BE = rugi sebesar biaya. |
+| D — TP cepat 0,4R | Seluruh posisi keluar di 0,4R (M15 ±20 pips, H1 ±40 pips) atau SL. |
+| E — TP cepat 0,6R | Seluruh posisi keluar di 0,6R (M15 ±30 pips, H1 ±60 pips) atau SL. |
+| F — 1/2 di 0,6R + BE, sisa ke TP2 | Setengah posisi keluar di 0,6R, lalu SL sisanya pindah ke entry; sisa menuju TP2. |
 
 - Biaya: SL = jarak SL + biaya; TP = jarak TP penuh (TP harus menutup biaya). SL dan TP dalam satu candle dihitung SL.
 - Posisi yang lewat 24 jam ditutup di close terakhir. Trade yang datanya habis sebelum tuntas tidak dihitung.
@@ -184,3 +187,24 @@ Kesimpulan di UI disusun otomatis dan jujur:
 - "positif tapi belum signifikan" bila intervalnya mencakup nol.
 
 Kesimpulan ini bukan perintah. Jurnal tetap manual.
+
+**Win rate tinggi tanpa mengurangi jumlah sinyal.** Pengguna ingin win rate ≥75–80%, tetapi tidak mau sinyal dipangkas oleh filter ketat. Karena itu win rate dinaikkan lewat **TP lebih dekat** (varian D–F), bukan dengan menyaring setup.
+
+Konsekuensinya jelas: dengan SL ±54 pips setelah biaya, win rate minimum untuk impas adalah 52% (TP 50), 64% (TP 30), 73% (TP 20), dan 78% (TP 15). Win rate tinggi hanya berguna bila ekspektasinya tetap positif.
+
+`pickVariant(report, 0.75)` bekerja dalam dua langkah:
+1. **Memilih dari data pengembangan:** varian dengan ekspektasi tertinggi di antara varian yang punya WR ≥ 75%, ekspektasi > 0, dan n ≥ 30.
+2. **Membuktikan di data uji**, dengan putusan:
+   - **terbukti:** WR ≥ target dan interval ekspektasi > 0;
+   - **positif:** masih positif tapi belum memenuhi target atau belum signifikan;
+   - **gagal:** ekspektasi ≤ 0 — kemungkinan overfitting, jangan dipakai;
+   - **sampel kurang:** n uji belum cukup.
+
+Data uji tidak pernah dipakai untuk memilih.
+
+**Blackout news.** Engine tidak membuat setup baru ±30 menit di sekitar rilis FOMC/NFP/CPI/PPI (`newsBlackoutMin`, `newsBlackoutAt`):
+- setup yang sudah ada tetap dipantau;
+- alasan penahanan tampil di Dashboard (“Sinyal baru dihentikan”);
+- jumlah sinyal yang hilang hanya beberapa per minggu.
+
+Aturan ini belum bisa divalidasi di backtest karena kalender historis tidak tersedia gratis; ini aturan manajemen risiko, bukan klaim peningkatan win rate.

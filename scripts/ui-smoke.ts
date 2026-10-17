@@ -118,7 +118,13 @@ const fixtures: Record<string, unknown> = {
       return {
         createdAt: NOW - (320 - i) * 86400, strategy: rnd() < 0.6 ? "breakout_retest" : "trend_pullback", timeframe: tf, direction: rnd() < 0.5 ? "BUY" : "SELL",
         session: sessions[Math.floor(rnd() * 4)], slPips: sl, entryTouched: touched, invalidBeforeEntry: false, tp: [tp1, tp2, tp3], ambiguous: false,
-        pips: touched ? { A, B: Math.round(B * 10) / 10, C: Math.round(C * 10) / 10 } : null,
+        pips: touched
+          ? (() => {
+              const q4 = tp1 || rnd() < 0.55; // TP cepat lebih sering kena
+              const q6 = tp1 || (q4 && rnd() < 0.6);
+              return { A, B: Math.round(B * 10) / 10, C: Math.round(C * 10) / 10, D: q4 ? 0.4 * sl : lossA, E: q6 ? 0.6 * sl : lossA, F: q6 ? Math.round(((0.6 * sl + (tp2 ? 2 * sl : -3)) / 2) * 10) / 10 : lossA };
+            })()
+          : null,
       } as BacktestTrade;
     });
     return { id: "current", version: "demo", computed_at: iso(NOW), source: "DEMO — data sintetis untuk uji tampilan", chunks: 46, report: summarizeTrades(trades) };

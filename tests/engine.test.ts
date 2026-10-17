@@ -163,3 +163,17 @@ describe("rencana SL/TP per timeframe", () => {
     expect(seen.has("M15")).toBe(true);
   }, 60_000);
 });
+
+describe("blackout news FOMC/NFP/CPI/PPI", () => {
+  it("setup baru ditahan selama jendela rilis; alasan dicatat; tanpa blackout setup tetap dibuat", () => {
+    const normal = runEngineCycle(input(T0));
+    expect(normal.created.length).toBeGreaterThan(0);
+    expect(normal.blackoutReason).toBeNull();
+    const held = runEngineCycle(input(T0, { newsBlackout: { title: "CPI m/m", timeSec: T0 + 600 } }));
+    expect(held.created).toHaveLength(0);
+    expect(held.blackoutReason).toMatch(/CPI m\/m dalam 10 menit/);
+    expect(held.rejected.length).toBeGreaterThanOrEqual(normal.created.length);
+    const off = runEngineCycle(input(T0, { newsBlackout: { title: "CPI m/m", timeSec: T0 }, config: { ...DEFAULT_ENGINE_CONFIG, newsBlackoutMin: 0 } }));
+    expect(off.created.length).toBe(normal.created.length);
+  });
+});

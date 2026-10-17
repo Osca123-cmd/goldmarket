@@ -38,6 +38,8 @@ export interface EngineConfig {
   cooldownBars: number;
   /** jarak maksimum harga ke area entry (× ATR konteks) agar setup dibuat */
   maxDistanceAtr: number;
+  /** tidak membuat setup baru ±N menit di sekitar rilis FOMC/NFP/CPI/PPI (0 = nonaktif) */
+  newsBlackoutMin: number;
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
@@ -62,6 +64,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   dedupePips: 30,
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
+  newsBlackoutMin: 30,
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {

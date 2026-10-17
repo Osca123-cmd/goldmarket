@@ -36,6 +36,8 @@ export interface EngineInput {
   previousFeedStatus: FeedStatus | null;
   existing: StoredSetup[];
   config: EngineConfig;
+  /** rilis FOMC/NFP/CPI/PPI dalam jendela larangan (lihat newsBlackoutAt) — setup baru ditahan */
+  newsBlackout?: { title: string; timeSec: number } | null;
 }
 
 export interface StatusChange {
@@ -58,6 +60,8 @@ export interface EngineOutput {
   changes: StatusChange[];
   notifications: EngineNotification[];
   session: string;
+  /** alasan setup baru ditahan karena rilis news (null bila tidak) */
+  blackoutReason: string | null;
 }
 
 /** Judul notifikasi siap-siap: "🟢 READY BUY XAUUSD — M15" / "🔴 READY SELL XAUUSD — H1". */
@@ -99,6 +103,10 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
 
   const notifications: EngineNotification[] = [];
   const created: SetupCandidate[] = [];
+  const blackoutReason =
+    i.newsBlackout && cfg.newsBlackoutMin > 0
+      ? `Rilis ${i.newsBlackout.title} ${i.newsBlackout.timeSec > i.nowSec ? `dalam ${Math.max(1, Math.round((i.newsBlackout.timeSec - i.nowSec) / 60))} menit` : "baru saja"} — setup baru ditahan ±${cfg.newsBlackoutMin} menit di sekitar rilis.`
+      : null;
   const rejected: EngineOutput["rejected"] = [];
 
   // Sinyal baru HANYA bila data lolos validasi (tidak basi, tidak ada candle hilang, koneksi sehat).
@@ -109,6 +117,10 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     );
     const pool = [...i.existing];
     for (const c of cands) {
+      if (blackoutReason) {
+        rejected.push({ identityKey: c.identityKey, reason: blackoutReason });
+        continue;
+      }
       const v = dedupeCandidate(c, pool, cfg);
       if (!v.ok) {
         rejected.push({ identityKey: c.identityKey, reason: v.reason });
@@ -201,6 +213,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     quality,
     created,
     rejected,
+    blackoutReason,
     changes,
     notifications,
     session: sessionAt(i.nowSec * 1000),

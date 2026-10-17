@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_SEC, DEFAULT_BT, chunkStartOf, nextChunk, runBacktest, simulate, summarizeTrades, variantStats, wilson, type BacktestTrade } from "../src/core/backtest.ts";
+import { CHUNK_SEC, DEFAULT_BT, chunkStartOf, nextChunk, pickVariant, runBacktest, simulate, summarizeTrades, variantStats, wilson, type BacktestTrade } from "../src/core/backtest.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
 import { DEFAULT_ENGINE_CONFIG } from "../src/core/config.ts";
 import type { SetupCandidate } from "../src/core/strategies.ts";
@@ -55,19 +55,19 @@ describe("manajemen posisi A/B/C", () => {
   const fillBar = bar(300, 3001, 2999.5, 3000);
   it("TP1 lalu kembali ke entry, lalu SL: A +50, B −16,7 (2/3 kena SL), C +16,7 (sisa keluar di BE)", () => {
     const r = simulate(setup, [fillBar, bar(600, 3006, 3002, 3004), bar(900, 3003, 2999.9, 3000.5), bar(1200, 3000, 2994, 2995)], DEFAULT_XAUUSD, o);
-    expect(r.pips).toEqual({ A: 50, B: -16.7, C: 16.7 });
+    expect(r.pips).toEqual({ A: 50, B: -16.7, C: 16.7, D: 20, E: 30, F: 15 });
   });
 
   it("semua TP tercapai: A +50, B = C = +100", () => {
     const r = simulate(setup, [fillBar, bar(600, 3006, 3001), bar(900, 3011, 3004), bar(1200, 3016, 3009)], DEFAULT_XAUUSD, o);
     expect(r.tp).toEqual([true, true, true]);
-    expect(r.pips).toEqual({ A: 50, B: 100, C: 100 });
+    expect(r.pips).toEqual({ A: 50, B: 100, C: 100, D: 20, E: 30, F: 65 });
   });
 
   it("SL dan TP1 di candle yang sama → konservatif SL untuk semua varian", () => {
     const r = simulate(setup, [fillBar, bar(600, 3006, 2994)], DEFAULT_XAUUSD, o);
     expect(r.ambiguous).toBe(true);
-    expect(r.pips).toEqual({ A: -50, B: -50, C: -50 });
+    expect(r.pips).toEqual({ A: -50, B: -50, C: -50, D: -50, E: -50, F: -50 });
   });
 
   it("biaya: fill lebih buruk → rugi SL = jarak SL + biaya; TP tetap jarak penuh", () => {
@@ -75,7 +75,7 @@ describe("manajemen posisi A/B/C", () => {
     const loss = simulate(setup, [fillBar, bar(600, 3001, 2994)], DEFAULT_XAUUSD, costs);
     expect(loss.pips?.A).toBe(-52);
     const win = simulate(setup, [fillBar, bar(600, 3005.3, 3001), bar(900, 3010.3, 3004), bar(1200, 3015.3, 3009)], DEFAULT_XAUUSD, costs);
-    expect(win.pips).toEqual({ A: 50, B: 100, C: 100 });
+    expect(win.pips).toMatchObject({ A: 50, B: 100, C: 100 });
   });
 
   it("batas tahan 24 jam: posisi ditutup di close terakhir; TP yang belum kena = gagal", () => {
@@ -83,7 +83,7 @@ describe("manajemen posisi A/B/C", () => {
     for (let t = 600; t <= 300 + 25 * 3600; t += 300) flat.push(bar(t, 3001, 2999.6, 3000.5));
     const r = simulate(setup, flat, DEFAULT_XAUUSD, o);
     expect(r.tp).toEqual([false, false, false]);
-    expect(r.pips).toEqual({ A: 5, B: 5, C: 5 });
+    expect(r.pips).toEqual({ A: 5, B: 5, C: 5, D: 5, E: 5, F: 5 });
   });
 
   it("data habis sebelum tuntas → tidak dihitung (pips null)", () => {
@@ -96,7 +96,7 @@ describe("manajemen posisi A/B/C", () => {
 describe("ringkasan ekspektasi & penjadwalan potongan", () => {
   const tr = (i: number, a: number, extra: Partial<BacktestTrade> = {}): BacktestTrade => ({
     createdAt: i * 3600, strategy: "trend_pullback", timeframe: "M15", direction: "BUY", session: "london", slPips: 50,
-    entryTouched: true, invalidBeforeEntry: false, tp: [a > 0, false, false], ambiguous: false, pips: { A: a, B: a, C: a }, ...extra,
+    entryTouched: true, invalidBeforeEntry: false, tp: [a > 0, false, false], ambiguous: false, pips: { A: a, B: a, C: a, D: a, E: a, F: a }, ...extra,
   });
   it("ekspektasi, winrate, profit factor, max drawdown", () => {
     const v = variantStats([tr(1, 50), tr(2, -50), tr(3, -50), tr(4, 50), tr(5, 50)], "A");
@@ -127,5 +127,26 @@ describe("ringkasan ekspektasi & penjadwalan potongan", () => {
     const all = [];
     for (let st = cur; st >= cur - 60 * CHUNK_SEC; st -= CHUNK_SEC) all.push({ start: st, computedAt: st === cur ? now : st + CHUNK_SEC + 2 * 86400 });
     expect(nextChunk(all, now, 12)).toBeNull();
+  });
+});
+
+describe("pemilihan varian (dev memilih, uji membuktikan)", () => {
+  // D: win rate tinggi & positif; A: ekspektasi tinggi tapi win rate rendah
+  const mk = (i: number, win: boolean, dev: boolean): BacktestTrade => ({
+    createdAt: (dev ? 0 : 1_000_000) + i * 3600, strategy: "trend_pullback", timeframe: "M15", direction: "BUY", session: "london", slPips: 50,
+    entryTouched: true, invalidBeforeEntry: false, tp: [false, false, false], ambiguous: false,
+    pips: { A: win && i % 2 === 0 ? 150 : -53, B: -10, C: -5, D: win ? 20 : -53, E: win ? 30 : -53, F: -1 },
+  });
+  const trades = [...Array.from({ length: 60 }, (_, i) => mk(i, i % 10 !== 0, true)), ...Array.from({ length: 40 }, (_, i) => mk(i, i % 10 !== 0, false))];
+  it("memilih varian ber-WR ≥ 75% dengan ekspektasi tertinggi di data pengembangan, lalu menilai di data uji", () => {
+    const pick = pickVariant(summarizeTrades(trades)!, 0.75)!;
+    expect(pick.meetsTarget).toBe(true);
+    expect(pick.variant).toBe("E"); // WR 90%, E = 0,9·30 − 0,1·53 > D
+    expect(pick.dev.winRate.p).toBeGreaterThanOrEqual(0.75);
+    expect(pick.verdict).toBe("terbukti");
+  });
+  it("tanpa varian yang memenuhi target → ekspektasi tertinggi, meetsTarget = false", () => {
+    const pick = pickVariant(summarizeTrades(trades)!, 0.95)!;
+    expect(pick.meetsTarget).toBe(false);
   });
 });
