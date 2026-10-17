@@ -63,7 +63,7 @@ const KINDS: [string, string][] = [
   ["invalid", "Setup invalid"],
   ["expired", "Setup kedaluwarsa"],
   ["connection", "Gangguan koneksi data"],
-  ["news_event", "News besar (USD) sebentar lagi"],
+  ["news_event", "FOMC / NFP / CPI / PPI sebentar lagi"],
 ];
 
 function SettingsPage() {
@@ -192,7 +192,7 @@ function SettingsPage() {
       <Card title="Notifikasi">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {inp("near_entry_pips", "Ambang mendekati entry (pips)")}
-          {inp("news_alert_minutes", "Peringatan news besar (menit sebelum)", "5–240 menit")}
+          {inp("news_alert_minutes", "Peringatan FOMC/NFP/CPI/PPI (menit sebelum)", "5–240 menit")}
           {inp("notify_cooldown_min", "Cooldown peringatan (menit)")}
           {inp("min_score_m15", "Skor minimum M15")}
           {inp("min_score_h1", "Skor minimum H1")}

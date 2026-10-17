@@ -22,7 +22,6 @@ import {
   dedupeNews,
   eventsInAlertWindow,
   explainImpact,
-  isGoldRelevant,
   maxSimilarity,
   newsEventBody,
   newsEventTitle,
@@ -30,6 +29,8 @@ import {
   parseFfCalendar,
   parseRss,
   FED_POLICY,
+  calendarTopic,
+  newsTopic,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -469,8 +470,9 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   // ---- news besar (kalender ekonomi): lonceng in-app 30 menit sebelumnya; push per pengguna di deliverPush ----
   let upcoming: UpcomingEvent[] = [];
   try {
-    const { data: soon } = await db.from("econ_events").select("event_key,title,country,impact,time_at,forecast,previous").eq("impact", "High").gt("time_at", iso(t0)).lte("time_at", iso(t0 + 240 * 60)).order("time_at").limit(20);
-    upcoming = (soon ?? []).map((e) => ({ ...e, timeSec: sec(e.time_at)! }));
+    const { data: soon } = await db.from("econ_events").select("event_key,title,country,impact,time_at,forecast,previous").not("topic", "is", null).gt("time_at", iso(t0)).lte("time_at", iso(t0 + 240 * 60)).order("time_at").limit(20);
+    // semua event FOMC/NFP/CPI/PPI dianggap "news besar" untuk peringatan
+    upcoming = (soon ?? []).map((e) => ({ ...e, impact: "High", timeSec: sec(e.time_at)! }));
   } catch (e) {
     console.error("econ", (e as Error).message);
   }
@@ -636,8 +638,8 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
 // bawaan Supabase Edge Runtime bila tersedia. Bukan sinyal, bukan probabilitas.
 // ---------------------------------------------------------------------------
 const NEWS_FEEDS: { id: string; label: string; url: string; only?: RegExp }[] = [
-  { id: "gnews_gold", label: "Google News", url: "https://news.google.com/rss/search?q=gold+price+OR+XAUUSD+OR+%22Federal+Reserve%22+when:1d&hl=en-US&gl=US&ceid=US:en" },
-  { id: "gnews_macro", label: "Google News", url: "https://news.google.com/rss/search?q=%22gold%22+%28Fed+OR+dollar+OR+yields+OR+inflation%29+when:1d&hl=en-US&gl=US&ceid=US:en" },
+  { id: "gnews_fomc", label: "Google News", url: "https://news.google.com/rss/search?q=FOMC+OR+%22Fed+rate+decision%22+when:2d&hl=en-US&gl=US&ceid=US:en" },
+  { id: "gnews_data", label: "Google News", url: "https://news.google.com/rss/search?q=%22nonfarm+payrolls%22+OR+%22US+CPI%22+OR+%22US+PPI%22+OR+%22producer+prices%22+when:2d&hl=en-US&gl=US&ceid=US:en" },
   { id: "inv_commodities", label: "Investing.com", url: "https://www.investing.com/rss/news_11.rss" },
   { id: "inv_economy", label: "Investing.com", url: "https://www.investing.com/rss/news_14.rss" },
   { id: "inv_forex", label: "Investing.com", url: "https://www.investing.com/rss/news_1.rss" },
@@ -651,10 +653,10 @@ const NEWS_MIN_RELEVANCE = Number(env("NEWS_MIN_RELEVANCE", "0"));
 // Batas CPU Edge Function: embedding hanya untuk beberapa judul baru per putaran (label tetap berbasis aturan untuk semua)
 const NEWS_EMBED_MAX = Number(env("NEWS_EMBED_MAX", "6"));
 const RELEVANCE_PROTOTYPES = [
-  "gold price outlook and bullion market",
-  "Federal Reserve interest rate decision and inflation",
-  "US dollar and Treasury yields move markets",
-  "geopolitical risk drives safe haven demand",
+  "FOMC Federal Reserve interest rate decision",
+  "US nonfarm payrolls jobs report",
+  "US consumer price index CPI inflation report",
+  "US producer price index PPI report",
 ];
 
 async function fetchText(url: string): Promise<string> {
@@ -703,7 +705,8 @@ async function news(db: Db) {
     } else feeds[NEWS_FEEDS[i].id] = scrub(String((r.reason as Error)?.message ?? r.reason));
   });
   const feedOf = new Map(all.map((a) => [newsKey(a.item.title), a.feed]));
-  const fresh = dedupeNews(all.map((a) => a.item)).filter((it) => isGoldRelevant(it.title, it.snippet) && (it.publishedAt == null || t0 - it.publishedAt <= NEWS_MAX_AGE_SEC)).slice(0, 60);
+  // hanya berita FOMC / NFP / CPI / PPI
+  const fresh = dedupeNews(all.map((a) => a.item)).filter((it) => newsTopic(it.title, it.snippet) && (it.publishedAt == null || t0 - it.publishedAt <= NEWS_MAX_AGE_SEC)).slice(0, 60);
 
   // hanya proses judul yang belum tersimpan
   const keys = fresh.map((it) => newsKey(it.title));
@@ -732,6 +735,7 @@ async function news(db: Db) {
     const r = classifyGoldImpact(it.title, it.snippet);
     rows.push({
       dedupe_key: newsKey(it.title),
+      topic: newsTopic(it.title, it.snippet),
       title: it.title,
       link: it.link,
       source: it.source,
@@ -756,17 +760,20 @@ async function news(db: Db) {
   await db.from("news_items").delete().lt("created_at", iso(t0 - 7 * 86400));
   await db.from("econ_events").delete().lt("time_at", iso(t0 - 14 * 86400));
   await db.from("news_items").delete().eq("feed", "fed_press").not("title", "imatch", FED_POLICY.source.replace(/\\b/g, "\\y"));
+  await db.from("news_items").delete().is("topic", null); // di luar FOMC/NFP/CPI/PPI
+  await db.from("econ_events").delete().is("topic", null);
 
   // ---- kalender ekonomi: maksimal sekali per jam (hormati sumber gratis) ----
   let calendar: number | string = "cached";
   const { data: last } = await db.from("econ_events").select("fetched_at").order("fetched_at", { ascending: false }).limit(1).maybeSingle();
   if (!last || t0 - (sec(last.fetched_at) ?? 0) >= 3600) {
     try {
-      const events = parseFfCalendar(JSON.parse(await fetchText(FF_URL)));
+      // hanya event FOMC / NFP / CPI / PPI (apa pun label dampaknya di sumber)
+      const events = parseFfCalendar(JSON.parse(await fetchText(FF_URL)), ["USD"], ["High", "Medium", "Low"]).filter((e) => calendarTopic(e.title));
       const fetchedAt = iso(t0);
       if (events.length) {
         const { error } = await db.from("econ_events").upsert(
-          events.map((e) => ({ event_key: e.key, title: e.title, country: e.country, impact: e.impact, time_at: iso(e.timeSec), forecast: e.forecast, previous: e.previous, fetched_at: fetchedAt })),
+          events.map((e) => ({ event_key: e.key, topic: calendarTopic(e.title), title: e.title, country: e.country, impact: e.impact, time_at: iso(e.timeSec), forecast: e.forecast, previous: e.previous, fetched_at: fetchedAt })),
           { onConflict: "event_key" },
         );
         if (error) throw new Error(error.message);

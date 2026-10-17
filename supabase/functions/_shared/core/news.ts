@@ -148,8 +148,8 @@ export const NEWS_RULES: Rule[] = [
   { id: "usd_strong", dir: -1, weight: 2, re: new RegExp(`${NOT_USD}\\b(?:dollar|usd|greenback)\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bstrong(?:er)? (?:us )?dollar\\b`), reason: "USD menguat → menekan emas" },
   { id: "yields_down", usOnly: true, dir: 1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${DOWN})\\b|\\bbond rally\\b`), reason: "Imbal hasil obligasi turun → biaya peluang memegang emas turun" },
   { id: "yields_up", usOnly: true, dir: -1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bbond (?:sell-?off|rout)\\b`), reason: "Imbal hasil obligasi naik → menekan emas" },
-  { id: "inflation_hot", usOnly: true, dir: -1, weight: 2, re: /\b(?:hot|hotter|sticky|accelerating|higher[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:heats? up|accelerates?|jumps?|beats?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b/, reason: "Inflasi AS di atas perkiraan → peluang suku bunga tinggi lebih lama → menekan emas" },
-  { id: "inflation_cool", usOnly: true, dir: 1, weight: 2, re: /\b(?:cool(?:er|ing)?|soft(?:er)?|slower|lower[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:cools?|eases?|slows?|softens?|misses?|below (?:forecasts?|expectations))\b/, reason: "Inflasi AS melandai → ruang pemangkasan suku bunga → mendukung emas" },
+  { id: "inflation_hot", usOnly: true, dir: -1, weight: 2, re: /\b(?:hot|hotter|sticky|accelerating|higher[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|ppi|consumer prices|producer prices)\b|\b(?:inflation|cpi|pce|ppi|producer prices)\b[^.]{0,20}?\b(?:(?:hott?er|higher) than expected|heats? up|accelerates?|jumps?|beats?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b/, reason: "Inflasi AS di atas perkiraan → peluang suku bunga tinggi lebih lama → menekan emas" },
+  { id: "inflation_cool", usOnly: true, dir: 1, weight: 2, re: /\b(?:cool(?:er|ing)?|soft(?:er)?|slower|lower[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|ppi|consumer prices|producer prices)\b|\b(?:inflation|cpi|pce|ppi|producer prices)\b[^.]{0,20}?\b(?:(?:cooler|softer|lower|less) than expected|cools?|eases?|slows?|softens?|misses?|below (?:forecasts?|expectations))\b/, reason: "Inflasi AS melandai → ruang pemangkasan suku bunga → mendukung emas" },
   { id: "us_data_weak", usOnly: true, dir: 1, weight: 2, re: /\b(?:weak(?:er)?|soft(?:er)?|disappointing|dismal)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi|jobless)\b[^.]{0,30}?\b(?:miss(?:es|ed)?|weak(?:er)?|disappoint\w*|slow(?:s|ed|ing|down)?|contract\w*|below (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:rises?|rose|jumps?|climbs?|higher)\b|\bjobless claims\b[^.]{0,20}?\b(?:rise|rises|rose|jump|jumps|climb)\b/, reason: "Data ekonomi AS lemah → peluang pemangkasan suku bunga → mendukung emas" },
   { id: "us_data_strong", usOnly: true, dir: -1, weight: 2, re: /\b(?:strong(?:er)?|robust|blowout|solid)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi)\b[^.]{0,30}?\b(?:beats?|strong(?:er)?|robust|surges?|jumps?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:falls?|fell|drops?|lower)\b/, reason: "Data ekonomi AS kuat → USD & imbal hasil cenderung naik → menekan emas" },
   { id: "safe_haven", dir: 1, weight: 2, re: /\bsafe[- ]haven\b|\bgeopolitic\w*|\b(?:war|missile|airstrikes?|invasion|sanctions?)\b|\b(?:tensions?|crisis|turmoil|recession fears?|stock (?:market )?sell-?off|market rout)\b/, reason: "Risiko geopolitik/ketidakpastian → permintaan aset aman (safe haven)" },
@@ -253,10 +253,53 @@ export function eventsInAlertWindow<T extends { impact: string; timeSec: number 
 
 export function newsEventTitle(e: { title: string; country: string; timeSec: number }, nowSec: number): string {
   const mins = Math.max(1, Math.round((e.timeSec - nowSec) / 60));
-  return `⚠️ NEWS BESAR ${mins} menit lagi: ${e.title} (${e.country})`;
+  const topic = calendarTopic(e.title);
+  return `⚠️ ${topic ? `NEWS ${topic}` : "NEWS BESAR"} ${mins} menit lagi: ${e.title} (${e.country})`;
 }
 
 export function newsEventBody(e: { forecast: string | null; previous: string | null }): string {
   const nums = [e.forecast ? `forecast ${e.forecast}` : null, e.previous ? `previous ${e.previous}` : null].filter(Boolean).join(", ");
   return `${nums ? nums + ". " : ""}Volatilitas XAUUSD bisa tinggi & spread melebar. Pertimbangkan menunda entry atau memperketat manajemen risiko.`;
+}
+
+// ---------------------------------------------------------------------------
+// Fokus topik: hanya FOMC, NFP, CPI, PPI (berita, kalender, notifikasi)
+// ---------------------------------------------------------------------------
+export type KeyTopic = "FOMC" | "NFP" | "CPI" | "PPI";
+export const KEY_TOPICS: KeyTopic[] = ["FOMC", "NFP", "CPI", "PPI"];
+
+const TOPIC_NEWS: [KeyTopic, RegExp][] = [
+  ["FOMC", /\bfomc\b|\bfederal open market committee\b|\bfederal funds rate\b|\bdot plot\b|\b(?:fed|federal reserve)\b[^.]{0,40}?\b(?:rate decision|policy decision|decision|holds?|held|hold rates|keeps? rates|cuts?|cutting|raises?|hikes?|hiking|minutes|meeting|projections)\b/],
+  ["NFP", /\bnfp\b|\bnon-?farm payrolls?\b|\bnonfarm\b|\bpayrolls?\b|\bjobs report\b|\bemployment report\b/],
+  ["CPI", /\bcpi\b|\bconsumer price(?:s| index)\b|\binflation (?:data|report|figures|reading|print)\b/],
+  ["PPI", /\bppi\b|\bproducer price(?:s| index)\b|\bwholesale (?:prices|inflation)\b/],
+];
+
+/**
+ * Topik utama berita (urutan prioritas FOMC → NFP → CPI → PPI) atau null.
+ * Berita yang jelas tentang negara lain (mis. CPI Inggris) tidak dihitung; ADP bukan NFP.
+ */
+export function newsTopic(title: string, snippet = ""): KeyTopic | null {
+  const text = ` ${title}. ${snippet} `.toLowerCase();
+  if (FOREIGN.test(text) && !US.test(text)) return null;
+  // laporan ADP (swasta) bukan NFP: buang frasa ADP sebelum mencocokkan NFP
+  const noAdp = text.replace(/\badp\b[^.]{0,30}?\b(?:non-?farm |private )?(?:employment|payrolls?|jobs(?: report)?)\b/g, " ");
+  for (const [topic, re] of TOPIC_NEWS) {
+    if (re.test(topic === "NFP" ? noAdp : text)) return topic;
+  }
+  return null;
+}
+
+/**
+ * Topik event kalender ForexFactory (judul persis dari feed). NFP mencakup paket
+ * laporan tenaga kerja yang rilis bersamaan (Non-Farm, Unemployment Rate,
+ * Average Hourly Earnings); "ADP Non-Farm" bukan NFP.
+ */
+export function calendarTopic(title: string): KeyTopic | null {
+  const t = title.trim().toLowerCase();
+  if (/^(?:fomc\b|federal funds rate)/.test(t)) return "FOMC";
+  if (/^(?:non-farm employment change|unemployment rate|average hourly earnings)/.test(t)) return "NFP";
+  if (/^(?:core )?cpi\b/.test(t)) return "CPI";
+  if (/^(?:core )?ppi\b/.test(t)) return "PPI";
+  return null;
 }

@@ -5,6 +5,8 @@ import {
   dedupeNews,
   eventsInAlertWindow,
   explainImpact,
+  calendarTopic,
+  newsTopic,
   FED_POLICY,
   isGoldRelevant,
   newsEventBody,
@@ -89,6 +91,8 @@ describe("relevance & classification", () => {
     ["U.S. dollar snaps four-week win streak, helping the euro halt a five-week slide", "bullish"],
     ["Canadian dollar heads for weekly gain as U.S. dollar retreats", "bullish"],
     ["Australian dollar rises on strong jobs data", "neutral"],
+    ["US PPI hotter than expected in September", "bearish"],
+    ["Producer prices cool more than expected", "bullish"],
   ];
   for (const [title, label] of cases) {
     it(`${label}: ${title}`, () => expect(classifyGoldImpact(title).label).toBe(label));
@@ -132,6 +136,42 @@ describe("relevance & classification", () => {
   });
 });
 
+describe("topic focus: FOMC, NFP, CPI, PPI", () => {
+  const cases: [string, string | null][] = [
+    ["Federal Reserve issues FOMC statement", "FOMC"],
+    ["Analysis: Everyone expects the Fed to hold rates in October", "FOMC"],
+    ["Fed cuts rates by 25 basis points, signals more easing", "FOMC"],
+    ["US nonfarm payrolls rise 150,000 in September", "NFP"],
+    ["Dollar slips after weak jobs report", "NFP"],
+    ["ADP private payrolls fall unexpectedly", null],
+    ["ADP employment drops ahead of Friday's nonfarm payrolls", "NFP"],
+    ["Gold Price Slides on Hot Inflation", null],
+    ["US CPI rises 0.4% in September, core inflation sticky", "CPI"],
+    ["Consumer prices jump more than expected", "CPI"],
+    ["UK CPI hits 4% as Bank of England weighs hike", null],
+    ["US producer prices rise 0.6%", "PPI"],
+    ["PPI cools, easing pressure on the Fed", "PPI"],
+    ["Gold steadies near $4,160 as traders eye earnings", null],
+    ["Federal Reserve Board announces approval of application by BancFirst Corporation", null],
+  ];
+  for (const [title, topic] of cases) it(`${topic ?? "—"}: ${title}`, () => expect(newsTopic(title)).toBe(topic));
+
+  it("calendar titles", () => {
+    expect(calendarTopic("CPI m/m")).toBe("CPI");
+    expect(calendarTopic("Core CPI y/y")).toBe("CPI");
+    expect(calendarTopic("Core PPI m/m")).toBe("PPI");
+    expect(calendarTopic("Non-Farm Employment Change")).toBe("NFP");
+    expect(calendarTopic("Unemployment Rate")).toBe("NFP");
+    expect(calendarTopic("Average Hourly Earnings m/m")).toBe("NFP");
+    expect(calendarTopic("ADP Non-Farm Employment Change")).toBeNull();
+    expect(calendarTopic("Federal Funds Rate")).toBe("FOMC");
+    expect(calendarTopic("FOMC Meeting Minutes")).toBe("FOMC");
+    expect(calendarTopic("Retail Sales m/m")).toBeNull();
+    expect(calendarTopic("Fed Chairman Warsh Speaks")).toBeNull();
+    expect(calendarTopic("Unemployment Claims")).toBeNull();
+  });
+});
+
 describe("economic calendar", () => {
   const FF = [
     { title: "Bank Holiday", country: "USD", date: "2026-10-12T07:00:00-04:00", impact: "Holiday", forecast: "", previous: "" },
@@ -157,7 +197,7 @@ describe("economic calendar", () => {
     expect(eventsInAlertWindow(ev, t - 31 * 60, 30)).toHaveLength(0);
     expect(eventsInAlertWindow(ev, t - 30 * 60, 30).map((e) => e.title)).toEqual(["CPI m/m"]);
     expect(eventsInAlertWindow(ev, t, 30)).toHaveLength(0); // sudah rilis
-    expect(newsEventTitle(ev[0], t - 30 * 60)).toBe("⚠️ NEWS BESAR 30 menit lagi: CPI m/m (USD)");
+    expect(newsEventTitle(ev[0], t - 30 * 60)).toBe("⚠️ NEWS CPI 30 menit lagi: CPI m/m (USD)");
     expect(newsEventBody(ev[0])).toMatch(/^forecast 0.3%, previous 0.4%\./);
   });
 });

@@ -126,6 +126,11 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 
 ## 12. News AI (gratis, tanpa API key)
 
+- **Fokus topik: hanya FOMC, NFP, CPI, PPI** (permintaan pengguna). Berlaku untuk berita, kalender, dan notifikasi.
+  - Berita: `newsTopic()` — FOMC (FOMC, federal funds rate, dot plot, "Fed holds/cuts/raises/minutes/decision"), NFP (non-farm payrolls, payrolls, jobs report; laporan **ADP bukan NFP**), CPI (CPI, consumer prices, inflation report/data), PPI (PPI, producer prices). Berita yang jelas tentang negara lain (mis. CPI Inggris) tidak diambil.
+  - Kalender: `calendarTopic()` — `FOMC …`/`Federal Funds Rate`, `Non-Farm Employment Change` + `Unemployment Rate` + `Average Hourly Earnings` (paket laporan NFP yang rilis bersamaan; `ADP Non-Farm` dikecualikan), `CPI`/`Core CPI`, `PPI`/`Core PPI`. Event di luar keempat topik tidak disimpan.
+  - Peringatan push berlaku untuk semua event keempat topik (apa pun label dampaknya di sumber), judul `⚠️ NEWS CPI 30 menit lagi: CPI m/m (USD)`.
+
 - **Sumber berita** (RSS publik, judul + tautan saja, artikel tidak disalin): Google News (pencarian gold/XAUUSD/Fed), Investing.com (komoditas, ekonomi, forex), Federal Reserve (rilis pers resmi), CNBC Economy, MarketWatch. Engine mode `news` berjalan tiap 15 menit; sumber yang gagal (mis. HTTP 503) dilewati dan dicatat di `engine_runs.stats.feeds`.
 - **Relevansi**: gerbang kata kunci (gold, XAU, Fed, FOMC, dollar, yields, CPI, NFP, PCE, inflation, …) + skor kemiripan embedding model `gte-small` bawaan Supabase Edge Runtime (gratis; disimpan di `news_items.relevance`; filter opsional via env `NEWS_MIN_RELEVANCE`, default 0 = tidak memfilter). Bila model tidak tersedia, cukup kata kunci.
 - **Label dampak ke emas** (`src/core/news.ts`, `classifyGoldImpact`) — aturan transparan, tiap aturan dihitung sekali:

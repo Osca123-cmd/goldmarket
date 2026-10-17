@@ -14,7 +14,7 @@ import { TF_SECONDS, type Timeframe } from "../src/core/types.ts";
 import { barOverlapsMarket, demoCandle } from "../src/core/providers.ts";
 import { evaluateOutcome } from "../src/core/outcome.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
-import { classifyGoldImpact, explainImpact } from "../src/core/news.ts";
+import { calendarTopic, classifyGoldImpact, explainImpact, newsTopic } from "../src/core/news.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const OUT = process.env.SHOT_DIR ?? join(ROOT, "docs/screenshots");
@@ -100,21 +100,21 @@ const fixtures: Record<string, unknown> = {
   journal_attachments: [],
   // News AI: judul contoh diklasifikasi oleh aturan yang sama dengan engine; waktu relatif ke jam browser
   news_items: [
-    ["Gold Price Slides on Hot Inflation, but Schiff Says It's a Gift", "Yahoo Finance", 12],
-    ["Gold prices slip for the week as oil gains offset weaker dollar, U.S. bond rally", "Investing.com", 95],
+    ["US CPI rises more than expected in September as inflation heats up", "Reuters", 12],
+    ["Fed holds rates steady, signals rate cuts ahead", "CNBC", 95],
     ["Dollar slips and Treasury yields fall after weak jobs report", "Reuters", 180],
-    ["Gold traders await Powell speech", "CNBC", 300],
+    ["US producer prices rise 0.6% in September", "Investing.com", 300],
   ].map(([title, source, minAgo], i) => {
     const r = classifyGoldImpact(String(title));
     const t = new Date(Date.now() - Number(minAgo) * 60000).toISOString();
-    return { id: `n${i}`, title, link: "https://example.com/" + i, source, published_at: t, snippet: "", label: r.label, confidence: r.confidence, conflict: r.conflict, rule_ids: r.ruleIds, reasons: r.reasons, explanation: explainImpact(r), created_at: t };
+    return { id: `n${i}`, topic: newsTopic(String(title)), title, link: "https://example.com/" + i, source, published_at: t, snippet: "", label: r.label, confidence: r.confidence, conflict: r.conflict, rule_ids: r.ruleIds, reasons: r.reasons, explanation: explainImpact(r), created_at: t };
   }),
   econ_events: [
     ["CPI m/m", "High", 25, "0.3%", "0.4%"],
-    ["Unemployment Claims", "Medium", 25, "199K", "197K"],
+    ["Core CPI m/m", "High", 25, "0.2%", "0.3%"],
     ["FOMC Statement", "High", 60 * 26, null, null],
-    ["Retail Sales m/m", "High", -60 * 5, "0.3%", "1.2%"],
-  ].map(([title, impact, minAhead, forecast, previous]) => ({ event_key: `USD|${title}`, title, country: "USD", impact, time_at: new Date(Date.now() + Number(minAhead) * 60000).toISOString(), forecast, previous, fetched_at: new Date().toISOString() })),
+    ["Non-Farm Employment Change", "High", -60 * 5, "150K", "142K"],
+  ].map(([title, impact, minAhead, forecast, previous]) => ({ event_key: `USD|${title}`, topic: calendarTopic(String(title)), title, country: "USD", impact, time_at: new Date(Date.now() + Number(minAhead) * 60000).toISOString(), forecast, previous, fetched_at: new Date().toISOString() })),
 };
 
 async function mockSupabase(route: Route) {

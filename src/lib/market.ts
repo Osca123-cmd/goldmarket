@@ -246,8 +246,11 @@ export function useNotifications() {
   }, 30000);
 }
 
+export type KeyTopic = "FOMC" | "NFP" | "CPI" | "PPI";
+
 export interface NewsRow {
   id: string;
+  topic: KeyTopic | null;
   title: string;
   link: string;
   source: string;
@@ -264,6 +267,7 @@ export interface NewsRow {
 
 export interface EconEventRow {
   event_key: string;
+  topic: KeyTopic | null;
   title: string;
   country: string;
   impact: "High" | "Medium" | "Low" | "Holiday";
@@ -275,7 +279,7 @@ export interface EconEventRow {
 
 export function useNews(limit = 60) {
   return useLive<NewsRow[]>(`news:${limit}`, "news_items", async () => {
-    const { data, error } = await supabase().from("news_items").select("*").order("published_at", { ascending: false, nullsFirst: false }).limit(limit);
+    const { data, error } = await supabase().from("news_items").select("*").not("topic", "is", null).order("published_at", { ascending: false, nullsFirst: false }).limit(limit);
     if (error) throw error;
     return (data ?? []) as NewsRow[];
   }, 120000);
@@ -285,7 +289,7 @@ export function useNews(limit = 60) {
 export function useEconEvents() {
   return useLive<EconEventRow[]>("econ", "econ_events", async () => {
     const since = new Date(Date.now() - 86400000).toISOString();
-    const { data, error } = await supabase().from("econ_events").select("*").gte("time_at", since).order("time_at").limit(200);
+    const { data, error } = await supabase().from("econ_events").select("*").not("topic", "is", null).gte("time_at", since).order("time_at").limit(200);
     if (error) throw error;
     return (data ?? []) as EconEventRow[];
   }, 300000);

@@ -27,7 +27,7 @@ export function NextEvent({ ev, now, tz }: { ev: EconEventRow | null; now: numbe
   if (!ev) {
     return (
       <div className="rounded-2xl border border-line bg-surface-2/50 p-4 text-sm text-muted">
-        Tidak ada lagi event USD berdampak tinggi di kalender minggu ini. Jadwal minggu depan muncul otomatis saat sumber memperbarui kalender (awal minggu, Minggu).
+        Tidak ada lagi jadwal FOMC, NFP, CPI, atau PPI di kalender minggu ini. Jadwal minggu depan muncul otomatis saat sumber memperbarui kalender (awal minggu, Minggu).
       </div>
     );
   }
@@ -40,7 +40,7 @@ export function NextEvent({ ev, now, tz }: { ev: EconEventRow | null; now: numbe
           ⚠️
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-muted">News besar berikutnya (USD)</div>
+          <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Rilis berikutnya{ev.topic ? ` · ${ev.topic}` : ""} (USD)</div>
           <div className="break-words font-semibold">{ev.title}</div>
           <div className="text-xs text-muted">
             {dayKey(ev.time_at, tz)} · {hm(ev.time_at, tz)} · forecast {ev.forecast ?? "—"} · previous {ev.previous ?? "—"}

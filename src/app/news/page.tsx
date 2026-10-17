@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { Card, Empty, ago, cx, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { useEconEvents, useNews, type EconEventRow, type NewsRow } from "@/lib/market";
+import { useEconEvents, useNews, type EconEventRow, type KeyTopic, type NewsRow } from "@/lib/market";
 import { NextEvent, countdown, dayKey, hm } from "@/components/NextEvent";
 
 export default function Page() {
@@ -12,6 +12,23 @@ export default function Page() {
     <AppShell>
       <NewsPage />
     </AppShell>
+  );
+}
+
+const TOPICS: KeyTopic[] = ["FOMC", "NFP", "CPI", "PPI"];
+const TOPIC_DESC: Record<KeyTopic, string> = {
+  FOMC: "Keputusan suku bunga The Fed",
+  NFP: "Laporan tenaga kerja AS (Non-Farm Payrolls)",
+  CPI: "Inflasi konsumen AS",
+  PPI: "Inflasi produsen AS",
+};
+
+function TopicChip({ topic }: { topic: KeyTopic | null }) {
+  if (!topic) return null;
+  return (
+    <span className="chip border-gold/50 bg-gold/10 font-bold text-gold" title={TOPIC_DESC[topic]}>
+      {topic}
+    </span>
   );
 }
 
@@ -28,14 +45,14 @@ function NewsPage() {
   const { data: news, error: newsErr } = useNews();
   const { data: events, error: evErr } = useEconEvents();
   const [tab, setTab] = useState<"news" | "calendar">("news");
-  const [filter, setFilter] = useState<"all" | NewsRow["label"]>("all");
+  const [filter, setFilter] = useState<"all" | KeyTopic>("all");
 
-  const next = useMemo(() => (events ?? []).find((e) => e.impact === "High" && Date.parse(e.time_at) > now), [events, now]);
+  const next = useMemo(() => (events ?? []).find((e) => e.topic && Date.parse(e.time_at) > now), [events, now]);
   const day = useMemo(() => {
     const recent = (news ?? []).filter((n) => now - Date.parse(n.published_at ?? n.created_at) <= 86400000);
     return { bullish: recent.filter((n) => n.label === "bullish").length, bearish: recent.filter((n) => n.label === "bearish").length, neutral: recent.filter((n) => n.label === "neutral").length };
   }, [news, now]);
-  const shown = (news ?? []).filter((n) => filter === "all" || n.label === filter);
+  const shown = (news ?? []).filter((n) => filter === "all" || n.topic === filter);
 
   return (
     <div className="space-y-4">
@@ -46,7 +63,7 @@ function NewsPage() {
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-current" /> otomatis
           </span>
         </h1>
-        <p className="text-sm text-muted">Berita yang memengaruhi emas &amp; kalender ekonomi USD. Diperbarui tiap 15 menit dari sumber gratis.</p>
+        <p className="text-sm text-muted">Fokus hanya <b className="text-gold">FOMC · NFP · CPI · PPI</b> — berita, kalender, dan peringatan sebelum rilis. Diperbarui tiap 15 menit dari sumber gratis.</p>
       </div>
 
       <div className="rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs text-warn">
@@ -58,19 +75,19 @@ function NewsPage() {
       <div className="flex gap-2">
         {(["news", "calendar"] as const).map((t) => (
           <button key={t} className={cx("rounded-xl border px-4 py-2 text-sm font-semibold", tab === t ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted hover:text-ink")} onClick={() => setTab(t)}>
-            {t === "news" ? "Berita" : "Kalender ekonomi"}
+            {t === "news" ? "Berita" : "Kalender"}
           </button>
         ))}
       </div>
 
       {tab === "news" ? (
         <Card
-          title="Berita emas terbaru"
+          title="Berita FOMC · NFP · CPI · PPI"
           action={
             <div className="flex flex-wrap justify-end gap-1">
-              {(["all", "bullish", "bearish", "neutral"] as const).map((f) => (
-                <button key={f} className={cx("chip", filter === f ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted")} onClick={() => setFilter(f)}>
-                  {f === "all" ? "Semua" : LABEL[f].text}
+              {(["all", ...TOPICS] as const).map((f) => (
+                <button key={f} className={cx("chip", filter === f ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted")} onClick={() => setFilter(f)} title={f === "all" ? undefined : TOPIC_DESC[f]}>
+                  {f === "all" ? "Semua" : f}
                 </button>
               ))}
             </div>
@@ -83,7 +100,7 @@ function NewsPage() {
           {news == null ? (
             <p className="text-sm text-muted">Memuat berita…</p>
           ) : shown.length === 0 ? (
-            <Empty title="Belum ada berita">Engine mengambil berita tiap 15 menit. Jika sumber sedang tidak tersedia, daftar akan terisi pada putaran berikutnya.</Empty>
+            <Empty title="Belum ada berita untuk topik ini">Hanya berita FOMC, NFP, CPI, dan PPI yang ditampilkan. Berita biasanya ramai menjelang dan sesudah jadwal rilisnya (lihat tab Kalender).</Empty>
           ) : (
             <ul className="space-y-2">
               {shown.map((n) => (
@@ -104,9 +121,12 @@ function NewsCard({ n, now }: { n: NewsRow; now: number }) {
   return (
     <li className="fade-in rounded-xl border border-line/70 bg-surface-2/50 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-        <span className={cx("chip shrink-0 self-start font-bold", l.cls)} title="Dampak menurut aturan, untuk XAUUSD">
-          <span className={cx(n.label !== "neutral" && "pulse-dot")}>{l.icon}</span> {l.text}
-        </span>
+        <div className="flex shrink-0 flex-wrap gap-1 self-start sm:w-24 sm:flex-col sm:items-start">
+          <TopicChip topic={n.topic} />
+          <span className={cx("chip font-bold", l.cls)} title="Dampak menurut aturan, untuk XAUUSD">
+            <span className={cx(n.label !== "neutral" && "pulse-dot")}>{l.icon}</span> {l.text}
+          </span>
+        </div>
         <div className="min-w-0 flex-1">
           <a href={n.link} target="_blank" rel="noopener noreferrer nofollow" className="block break-words font-semibold leading-snug text-ink hover:text-gold">
             {n.title}
@@ -137,7 +157,7 @@ function Calendar({ events, error, now, tz }: { events: EconEventRow[] | null; e
   }, [events, tz]);
 
   return (
-    <Card title="Kalender ekonomi USD (High & Medium)">
+    <Card title="Jadwal FOMC · NFP · CPI · PPI (USD)">
       <p className="mb-3 text-xs text-muted">
         Sumber: ForexFactory (feed mingguan publik), waktu dalam {tz}. Feed ini hanya memuat <b>forecast</b> dan <b>previous</b> — angka <b>actual belum tersedia di sumber</b>, jadi tidak ditampilkan.
       </p>
@@ -145,7 +165,7 @@ function Calendar({ events, error, now, tz }: { events: EconEventRow[] | null; e
       {events == null ? (
         <p className="text-sm text-muted">Memuat kalender…</p>
       ) : groups.length === 0 ? (
-        <Empty title="Kalender kosong">Belum ada event untuk periode ini.</Empty>
+        <Empty title="Tidak ada jadwal FOMC/NFP/CPI/PPI">Tidak ada rilis keempat topik ini di kalender periode ini. Jadwal minggu depan muncul otomatis saat sumber memperbarui kalender (awal minggu).</Empty>
       ) : (
         <div className="space-y-4">
           {groups.map(([day, list]) => (
@@ -157,7 +177,7 @@ function Calendar({ events, error, now, tz }: { events: EconEventRow[] | null; e
                   return (
                     <li key={e.event_key} className={cx("flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm", ms <= 0 && "opacity-60")}>
                       <span className="num w-12 shrink-0 text-muted">{hm(e.time_at, tz)}</span>
-                      <span className={cx("chip shrink-0", e.impact === "High" ? "border-sell/50 bg-sell/10 text-sell" : "border-warn/50 bg-warn/10 text-warn")}>{e.impact === "High" ? "Tinggi" : "Sedang"}</span>
+                      <TopicChip topic={e.topic} />
                       <span className="min-w-0 flex-1 break-words font-medium">{e.title}</span>
                       <span className="num text-xs text-muted">F {e.forecast ?? "—"} · P {e.previous ?? "—"}</span>
                       <span className={cx("num w-full text-xs sm:w-24 sm:text-right", ms > 0 ? "text-gold" : "text-muted")}>{countdown(ms)}</span>

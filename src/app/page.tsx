@@ -30,7 +30,7 @@ function Dashboard() {
   const up = (snapshot?.day_change ?? 0) >= 0;
   const active = setups.filter((s) => s.eligible && isActiveSignal(s) && s.score >= (settings?.min_score?.[s.timeframe] ?? 60));
   const { data: events } = useEconEvents();
-  const nextEvent = (events ?? []).find((e) => e.impact === "High" && Date.parse(e.time_at) > now) ?? null;
+  const nextEvent = (events ?? []).find((e) => e.topic && Date.parse(e.time_at) > now) ?? null;
 
   return (
     <div className="space-y-4">
