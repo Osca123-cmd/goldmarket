@@ -282,6 +282,16 @@ export function barOverlapsMarket(openSec: number, step: number): boolean {
   return isMarketOpenBySchedule((openSec + step - 60) * 1000);
 }
 
+/**
+ * Hanya bar yang (sebagian) berada dalam jam pasar emas. Feed proxy 24/7 (PAXG)
+ * tetap bergerak saat akhir pekan & jeda harian — bar itu bukan harga emas dan
+ * akan mencemari indikator, struktur, dan backtest.
+ */
+export function marketHoursOnly(candles: Candle[], tf: Timeframe): Candle[] {
+  const step = TF_SECONDS[tf];
+  return candles.filter((c) => barOverlapsMarket(c.time, step));
+}
+
 export function demoProvider(): MarketProvider {
   return {
     id: "demo",

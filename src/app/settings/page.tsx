@@ -157,7 +157,7 @@ function SettingsPage() {
           {inp("default_spread_pips", "Spread asumsi (pips)")}
         </div>
         <p className="mt-2 text-xs text-muted">
-          Default aplikasi: 1 pip = 0,10 USD per troy ounce. Setup engine memakai rencana server (SL 50 / TP 50-100-150 pips); nilai di sini dipakai kalkulator & formulir Anda.
+          Default aplikasi: 1 pip = 0,10 USD per troy ounce. Setup engine memakai rencana server per timeframe — M15: SL 50 / TP 50-100-150 pips · H1: SL 100 / TP 100-200-300 pips; nilai di sini dipakai kalkulator & formulir Anda.
         </p>
       </Card>
 

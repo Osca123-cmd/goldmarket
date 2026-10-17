@@ -1,6 +1,6 @@
 import type { Candle, Direction, EntryType, MarketBias, StrategyId, Timeframe } from "./types.ts";
 import { TF_SECONDS } from "./types.ts";
-import type { EngineConfig, TfPair } from "./config.ts";
+import { planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
 import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level } from "./structure.ts";
 import { levelsFromEntry, roundToTick, type TradeLevels } from "./instrument.ts";
@@ -77,7 +77,8 @@ interface Draft {
 }
 
 function finalize(d: Draft, c: DetectContext): SetupCandidate {
-  const { spec, plan } = c.config;
+  const { spec } = c.config;
+  const plan = planFor(c.config, d.pair.context);
   const s = sgn(d.direction);
   const atrCtx = d.ctx.atr;
   const atrConf = d.conf?.atr ?? atrCtx / 2;

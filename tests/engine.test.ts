@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runEngineCycle, type EngineInput } from "../src/core/engine.ts";
-import { DEFAULT_ENGINE_CONFIG } from "../src/core/config.ts";
+import { DEFAULT_ENGINE_CONFIG, mergeConfig, planFor } from "../src/core/config.ts";
 import { demoPrice } from "../src/core/providers.ts";
 import { analyzeMarket } from "../src/core/analysis.ts";
 import { closedAsOf } from "../src/core/dataQuality.ts";
@@ -135,4 +135,31 @@ describe("tanpa candle masa depan (anti look-ahead)", () => {
     expect(closed.length).toBe(raw.length - 1);
     expect(closed.at(-1)!.time + 300).toBeLessThanOrEqual(t);
   });
+});
+
+describe("rencana SL/TP per timeframe", () => {
+  it("default: M15 50/50/100/150, H1 100/100/200/300; override parsial tergabung", () => {
+    expect(planFor(DEFAULT_ENGINE_CONFIG, "M15")).toEqual({ slPips: 50, tp1Pips: 50, tp2Pips: 100, tp3Pips: 150 });
+    expect(planFor(DEFAULT_ENGINE_CONFIG, "H1")).toEqual({ slPips: 100, tp1Pips: 100, tp2Pips: 200, tp3Pips: 300 });
+    expect(planFor(DEFAULT_ENGINE_CONFIG, "H4")).toEqual(DEFAULT_ENGINE_CONFIG.plan);
+    const m = mergeConfig({ planByTf: { H1: { slPips: 80 } as never } });
+    expect(planFor(m, "H1")).toEqual({ slPips: 80, tp1Pips: 100, tp2Pips: 200, tp3Pips: 300 });
+    expect(planFor(m, "M15").slPips).toBe(50);
+  });
+
+  it("setiap setup memakai level dari rencana TF-nya (jarak SL/TP persis, tidak diubah diam-diam)", () => {
+    const seen = new Set<string>();
+    for (let t = T0; t < T0 + 3 * 86400; t += 3600) {
+      for (const c of runEngineCycle(input(t)).created) {
+        const plan = planFor(DEFAULT_ENGINE_CONFIG, c.timeframe);
+        const pip = DEFAULT_ENGINE_CONFIG.spec.pipSize;
+        const sgn = c.direction === "BUY" ? 1 : -1;
+        expect(c.slPips).toBe(plan.slPips);
+        expect(Math.round((sgn * (c.entry - c.sl)) / pip)).toBe(plan.slPips);
+        expect(Math.round((sgn * (c.tp3 - c.entry)) / pip)).toBe(plan.tp3Pips);
+        seen.add(c.timeframe);
+      }
+    }
+    expect(seen.has("M15")).toBe(true);
+  }, 60_000);
 });

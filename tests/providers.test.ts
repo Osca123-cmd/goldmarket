@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGoldApi, parseTwelveDataQuote, parseTwelveDataSeries, spotHybrid } from "../src/core/providers.ts";
+import { marketHoursOnly, parseGoldApi, parseTwelveDataQuote, parseTwelveDataSeries, spotHybrid } from "../src/core/providers.ts";
 
 const WED = Date.parse("2026-10-14T09:00:00Z") / 1000; // pasar buka
 const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
@@ -51,5 +51,26 @@ describe("provider spot hybrid: inisialisasi", () => {
     const p = spotHybrid(null, fakeFetch(4166, 4164, SAT) as never);
     await p.fetchQuote(SAT);
     expect(p.basis).toBeCloseTo(2, 6);
+  });
+});
+
+describe("marketHoursOnly (buang bar PAXG di luar jam pasar emas)", () => {
+  const bar = (iso: string) => ({ time: Date.parse(iso) / 1000, open: 1, high: 1, low: 1, close: 1 });
+  const keep = (iso: string, tf: "M15" | "H1" | "D1") => marketHoursOnly([bar(iso)], tf).length === 1;
+  it("weekend and daily break are dropped; trading hours kept (NY time, EDT)", () => {
+    expect(keep("2026-10-16T20:45:00Z", "M15")).toBe(true); // Jumat 16:45 NY
+    expect(keep("2026-10-16T21:00:00Z", "M15")).toBe(false); // Jumat 17:00 NY — tutup mingguan
+    expect(keep("2026-10-17T12:00:00Z", "M15")).toBe(false); // Sabtu
+    expect(keep("2026-10-18T21:45:00Z", "M15")).toBe(false); // Minggu sebelum buka
+    expect(keep("2026-10-18T22:00:00Z", "M15")).toBe(true); // Minggu 18:00 NY — buka
+    expect(keep("2026-10-14T21:15:00Z", "M15")).toBe(false); // Rabu jeda harian 17:15 NY
+    expect(keep("2026-10-14T22:00:00Z", "M15")).toBe(true); // Rabu 18:00 NY
+    expect(keep("2026-10-14T21:00:00Z", "H1")).toBe(false); // H1 17:00–18:00 NY seluruhnya jeda
+    expect(keep("2026-10-14T20:00:00Z", "H1")).toBe(true);
+  });
+  it("daily bars: Saturday dropped, Friday and Sunday (opens 18:00 NY) kept", () => {
+    expect(keep("2026-10-17T00:00:00Z", "D1")).toBe(false);
+    expect(keep("2026-10-16T00:00:00Z", "D1")).toBe(true);
+    expect(keep("2026-10-18T00:00:00Z", "D1")).toBe(true);
   });
 });

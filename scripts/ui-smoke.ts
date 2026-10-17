@@ -13,6 +13,7 @@ import { demoPrice, demoProvider } from "../src/core/providers.ts";
 import { TF_SECONDS, type Timeframe } from "../src/core/types.ts";
 import { barOverlapsMarket, demoCandle } from "../src/core/providers.ts";
 import { evaluateOutcome } from "../src/core/outcome.ts";
+import { summarizeTrades, type BacktestTrade } from "../src/core/backtest.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
 import { calendarTopic, classifyGoldImpact, explainImpact, newsTopic } from "../src/core/news.ts";
 
@@ -98,6 +99,30 @@ const fixtures: Record<string, unknown> = {
   user_alerts: [],
   journal_events: [],
   journal_attachments: [],
+  // Backtest strategi: trade sintetis deterministik (bukan hasil nyata) untuk menguji tampilan
+  strategy_report: (() => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const sessions = ["asia", "london", "newyork", "off"];
+    const trades: BacktestTrade[] = Array.from({ length: 320 }, (_, i) => {
+      const tf = rnd() < 0.7 ? "M15" : "H1";
+      const sl = tf === "M15" ? 50 : 100;
+      const touched = rnd() < 0.78;
+      const tp1 = rnd() < 0.53;
+      const tp2 = tp1 && rnd() < 0.6;
+      const tp3 = tp2 && rnd() < 0.8;
+      const lossA = -(sl + 3);
+      const A = tp1 ? sl : lossA;
+      const B = ((tp1 ? sl : lossA) + (tp2 ? 2 * sl : lossA) + (tp3 ? 3 * sl : lossA)) / 3;
+      const C = tp1 ? (sl + (tp2 ? 2 * sl : -3) + (tp3 ? 3 * sl : -3)) / 3 : lossA;
+      return {
+        createdAt: NOW - (320 - i) * 86400, strategy: rnd() < 0.6 ? "breakout_retest" : "trend_pullback", timeframe: tf, direction: rnd() < 0.5 ? "BUY" : "SELL",
+        session: sessions[Math.floor(rnd() * 4)], slPips: sl, entryTouched: touched, invalidBeforeEntry: false, tp: [tp1, tp2, tp3], ambiguous: false,
+        pips: touched ? { A, B: Math.round(B * 10) / 10, C: Math.round(C * 10) / 10 } : null,
+      } as BacktestTrade;
+    });
+    return { id: "current", version: "demo", computed_at: iso(NOW), source: "DEMO — data sintetis untuk uji tampilan", chunks: 46, report: summarizeTrades(trades) };
+  })(),
   // News AI: judul contoh diklasifikasi oleh aturan yang sama dengan engine; waktu relatif ke jam browser
   news_items: [
     ["US CPI rises more than expected in September as inflation heats up", "Reuters", 12],
@@ -147,7 +172,7 @@ const session = {
   access_token: "mock", refresh_token: "mock", token_type: "bearer", expires_in: 3600 * 24 * 365, expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
   user: { id: UID, email: "demo@goldmarket.local", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-10-01T00:00:00Z" },
 };
-const pages = ["/", "/opportunities/", "/chart/", "/news/", "/risk/", "/journal/", "/stats/", "/settings/", "/login/"];
+const pages = ["/", "/opportunities/", "/chart/", "/news/", "/risk/", "/journal/", "/stats/", "/stats/?bt", "/settings/", "/login/"];
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 },
@@ -169,6 +194,7 @@ for (const vp of viewports) {
     await page.goto(`http://localhost:4173${p}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     if (p === "/journal/") await page.locator("section button.w-full").first().click().catch(() => {});
+    if (p.endsWith("?bt")) await page.getByRole("button", { name: "Backtest strategi" }).click();
     await page.waitForTimeout(500);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     if (bg !== "rgb(5, 10, 26)") problems.push(`${vp.name} ${p}: stylesheet tidak termuat (bg ${bg})`);
@@ -184,7 +210,7 @@ for (const vp of viewports) {
       problems.push(`${vp.name} ${p}: scroll horizontal ${overflow}px → ${culprits.join(", ")}`);
     }
     if (errors.length) problems.push(`${vp.name} ${p}: error JS ${errors.join(" | ")}`);
-    const name = `${vp.name}-${p.replace(/\//g, "") || "dashboard"}.png`;
+    const name = `${vp.name}-${p.replace(/\//g, "").replace("?bt", "-backtest") || "dashboard"}.png`;
     await page.screenshot({ path: join(OUT, name), fullPage: vp.name === "mobile" ? false : true });
     await page.close();
   }

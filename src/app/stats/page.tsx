@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
+import { BacktestPanel } from "@/components/BacktestPanel";
 import { Card, Disclaimer, Empty, Stat, cx, fmt, fmtMoney } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -12,8 +13,24 @@ import { STRATEGY_LABEL } from "@/core/config";
 export default function Page() {
   return (
     <AppShell>
-      <StatsPage />
+      <StatsTabs />
     </AppShell>
+  );
+}
+
+function StatsTabs() {
+  const [tab, setTab] = useState<"journal" | "backtest">("journal");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {(["journal", "backtest"] as const).map((t) => (
+          <button key={t} className={cx("rounded-xl border px-4 py-2 text-sm font-semibold", tab === t ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted hover:text-ink")} onClick={() => setTab(t)}>
+            {t === "journal" ? "Jurnal saya" : "Backtest strategi"}
+          </button>
+        ))}
+      </div>
+      {tab === "journal" ? <StatsPage /> : <BacktestPanel />}
+    </div>
   );
 }
 

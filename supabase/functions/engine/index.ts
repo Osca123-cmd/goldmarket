@@ -9,11 +9,17 @@ import {
   backoffSeconds,
   createProvider,
   dedupeCandles,
+  marketHoursOnly,
   deriveFeedStatus,
   isMarketOpenBySchedule,
   mergeConfig,
   priceToPips,
-  runBacktest,
+  runBacktestTrades,
+  probabilityReports,
+  summarizeTrades,
+  nextChunk,
+  CHUNK_SEC,
+  type BacktestTrade,
   runEngineCycle,
   DEFAULT_BT,
   evaluateOutcome,
@@ -137,20 +143,46 @@ async function refreshCandles(db: Db, p: MarketProvider, state: Record<string, u
     const due = newBar || (p.id !== "twelvedata" && nowSec - last >= Math.min(step, 300));
     if (!backfilled[tf]) {
       if (backfills >= 2) continue;
-      const c = await p.fetchCandles(tf, backfillSize(p, tf), nowSec);
+      const c = marketHoursOnly(await p.fetchCandles(tf, backfillSize(p, tf), nowSec), tf);
       fetched[tf] = await upsertCandles(db, p.id, tf, c);
       backfilled[tf] = true;
       lastFetch[tf] = nowSec;
       backfills++;
       budget--;
     } else if (due) {
-      const c = await p.fetchCandles(tf, 12, nowSec);
+      const c = marketHoursOnly(await p.fetchCandles(tf, 12, nowSec), tf);
       fetched[tf] = await upsertCandles(db, p.id, tf, c);
       lastFetch[tf] = nowSec;
       budget--;
     }
   }
   return { lastFetch, backfilled, fetched };
+}
+
+/**
+ * Pembersihan sekali jalan: hapus candle tersimpan di luar jam pasar emas
+ * (sebelum filter marketHoursOnly ada, bar PAXG akhir pekan ikut tersimpan).
+ */
+async function purgeOffHours(db: Db, source: string): Promise<number> {
+  let removed = 0;
+  for (const tf of STORED_TFS) {
+    const stale: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db.from("market_candles").select("ts").eq("source", source).eq("timeframe", tf).order("ts").range(from, from + 999);
+      if (error) throw new Error(`purge read ${tf}: ${error.message}`);
+      for (const r of data ?? []) {
+        const t = sec(r.ts)!;
+        if (marketHoursOnly([{ time: t, open: 1, high: 1, low: 1, close: 1 }], tf).length === 0) stale.push(r.ts);
+      }
+      if (!data || data.length < 1000) break;
+    }
+    for (let i = 0; i < stale.length; i += 200) {
+      const { error } = await db.from("market_candles").delete().eq("source", source).eq("timeframe", tf).in("ts", stale.slice(i, i + 200));
+      if (error) throw new Error(`purge delete ${tf}: ${error.message}`);
+    }
+    removed += stale.length;
+  }
+  return removed;
 }
 
 function snapshotFromQuote(p: MarketProvider, q: Quote, cfg: EngineConfig) {
@@ -267,10 +299,16 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     if (provider.id !== "twelvedata" || t0 - lastQuoteFetch >= QUOTE_INTERVAL_SEC - 5 || snap?.source !== provider.id) {
       quote = await provider.fetchQuote(t0);
     }
+    // sekali per provider: buang candle lama di luar jam pasar emas (lihat purgeOffHours)
+    const maint = (state.maintenance ?? {}) as Record<string, unknown>;
+    if (maint.offhours_purged_v1 !== provider.id) {
+      fetchInfo.purged_offhours = await purgeOffHours(db, provider.id);
+      state.maintenance = { ...maint, offhours_purged_v1: provider.id };
+    }
     const r = await refreshCandles(db, provider, state, t0);
     state.last_candle_fetch = r.lastFetch;
     state.backfilled = r.backfilled;
-    fetchInfo = r.fetched;
+    fetchInfo = { ...fetchInfo, ...r.fetched };
     failures = 0;
   } catch (e) {
     failures += 1;
@@ -794,29 +832,113 @@ async function news(db: Db) {
   return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar };
 }
 
-async function backtest(db: Db, cfg: EngineConfig, pid: string) {
-  const provider = createProvider(pid, { twelveDataKey: env("TWELVEDATA_API_KEY") || undefined });
-  const bars = Number(env("BACKTEST_BARS", "1500"));
+// ---------------------------------------------------------------------------
+// Backtest panjang bertahap: satu potongan 7 hari per pemanggilan (batas CPU
+// Edge), data riwayat Binance PAXG/USDT, hanya jam pasar emas. Hasil per trade
+// disimpan, lalu diringkas ulang: probabilitas (Live Opportunities) + laporan
+// manajemen posisi A/B/C (Statistik → Backtest).
+// ---------------------------------------------------------------------------
+const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
+/** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
+const STRATEGY_CODE_VERSION = "2026-10-18.1";
+// pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
+const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
+const BT_SOURCE = "Binance — PAXG/USDT (proxy emas), jam pasar emas";
+
+async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT): Promise<string> {
+  const { spec: _spec, ...strategy } = cfg;
+  const bytes = new TextEncoder().encode(JSON.stringify({ code: STRATEGY_CODE_VERSION, strategy, o }));
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(hash.slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function tradeRow(t: BacktestTrade, version: string, chunkStart: number) {
+  return {
+    version,
+    chunk_start: iso(chunkStart),
+    created_at: iso(t.createdAt),
+    strategy: t.strategy,
+    timeframe: t.timeframe,
+    direction: t.direction,
+    session: t.session,
+    sl_pips: t.slPips,
+    entry_touched: t.entryTouched,
+    invalid_before: t.invalidBeforeEntry,
+    tp: t.tp,
+    ambiguous: t.ambiguous,
+    pips: t.pips,
+  };
+}
+
+async function loadTrades(db: Db, version: string): Promise<BacktestTrade[]> {
+  const out: BacktestTrade[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("backtest_trades").select("created_at,strategy,timeframe,direction,session,sl_pips,entry_touched,invalid_before,tp,ambiguous,pips").eq("version", version).order("created_at").range(from, from + 999);
+    if (error) throw new Error(`load trades: ${error.message}`);
+    for (const r of data ?? []) {
+      out.push({ createdAt: sec(r.created_at)!, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, session: r.session, slPips: r.sl_pips, entryTouched: r.entry_touched, invalidBeforeEntry: r.invalid_before, tp: r.tp, ambiguous: r.ambiguous, pips: r.pips });
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
+  const o = { ...DEFAULT_BT, spreadPips: ASSUMED_SPREAD_PIPS, window: 220 };
+  const version = await strategyVersion(cfg, o);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const { data: doneRows, error: dErr } = await db.from("backtest_chunks").select("chunk_start,computed_at").eq("version", version);
+  if (dErr) throw new Error(`chunks: ${dErr.message}`);
+  const start = nextChunk((doneRows ?? []).map((r) => ({ start: sec(r.chunk_start)!, computedAt: sec(r.computed_at)! })), nowSec, BT_MONTHS);
+  if (start == null) return { version, idle: true, chunks: doneRows?.length ?? 0 };
+
+  // ---- data riwayat potongan ini (+ pemanasan, + 1 hari masa simulasi) ----
+  const end = start + CHUNK_SEC;
+  const simEnd = Math.min(end + 86400 + 3600, nowSec);
+  const paxg = createProvider("binance_paxg", {});
   const candles: Partial<Record<Timeframe, Candle[]>> = {};
-  candles.M15 = await loadCandles(db, provider.id, "M15", bars);
-  candles.M5 = await loadCandles(db, provider.id, "M5", bars * 3);
-  candles.H1 = await loadCandles(db, provider.id, "H1", Math.ceil(bars / 4) + 300);
-  candles.H4 = await loadCandles(db, provider.id, "H4", Math.ceil(bars / 16) + 300);
-  const reports = runBacktest(candles, { ...cfg, pairs: [{ context: "M15", confirm: "M5" }] }, { ...DEFAULT_BT, spreadPips: ASSUMED_SPREAD_PIPS, window: 220 });
-  const rows = reports.map((r) => ({
-    key: r.key,
-    computed_at: new Date().toISOString(),
-    source: provider.label,
-    period_from: iso(r.periodFrom),
-    period_to: iso(r.periodTo),
-    split_at: iso(r.splitAt),
-    dev: r.dev,
-    test: r.test,
-    sufficient: r.sufficient,
-    options: r.options,
-  }));
-  if (rows.length) await db.from("probability_stats").upsert(rows, { onConflict: "key" });
-  return { reports: rows.length, bars: Object.fromEntries(Object.entries(candles).map(([k, v]) => [k, v?.length])) };
+  const bars: Record<string, number> = {};
+  for (const tf of ["H4", "H1", "M15", "M5"] as Timeframe[]) {
+    const from = start - (BT_WARMUP_DAYS[tf] ?? 5) * 86400;
+    const count = Math.ceil((simEnd - from) / TF_SECONDS[tf]) + 2;
+    const raw = await paxg.fetchCandles(tf, count, simEnd);
+    candles[tf] = marketHoursOnly(raw.filter((c) => c.time >= from), tf);
+    bars[tf] = candles[tf]!.length;
+  }
+
+  const trades = runBacktestTrades(candles, cfg, o, { fromSec: start, toSec: Math.min(end, nowSec) });
+  await db.from("backtest_trades").delete().eq("version", version).eq("chunk_start", iso(start));
+  for (let i = 0; i < trades.length; i += 500) {
+    const { error } = await db.from("backtest_trades").insert(trades.slice(i, i + 500).map((t) => tradeRow(t, version, start)));
+    if (error) throw new Error(`insert trades: ${error.message}`);
+  }
+  await db.from("backtest_chunks").upsert({ chunk_start: iso(start), version, computed_at: iso(nowSec), setups: trades.length, touched: trades.filter((t) => t.entryTouched).length }, { onConflict: "chunk_start,version" });
+
+  // ---- ringkas ulang seluruh potongan versi ini ----
+  const all = await loadTrades(db, version);
+  const { count: chunks } = await db.from("backtest_chunks").select("chunk_start", { count: "exact", head: true }).eq("version", version);
+  const report = summarizeTrades(all, o);
+  if (report) {
+    await db.from("strategy_report").upsert({ id: "current", version, computed_at: iso(nowSec), source: BT_SOURCE, chunks: chunks ?? 0, report });
+    const rows = probabilityReports(all, o).map((r) => ({
+      key: r.key,
+      computed_at: new Date().toISOString(),
+      source: `${BT_SOURCE}, ${chunks ?? 0} minggu`,
+      period_from: iso(r.periodFrom),
+      period_to: iso(r.periodTo),
+      split_at: iso(r.splitAt),
+      dev: r.dev,
+      test: r.test,
+      sufficient: r.sufficient,
+      options: r.options,
+    }));
+    if (rows.length) await db.from("probability_stats").upsert(rows, { onConflict: "key" });
+  }
+  // versi strategi lama tidak relevan lagi
+  await db.from("backtest_trades").delete().neq("version", version);
+  await db.from("backtest_chunks").delete().neq("version", version);
+
+  return { version, chunk: iso(start), bars, setups: trades.length, touched: trades.filter((t) => t.entryTouched).length, totalTrades: all.length, chunks };
 }
 
 Deno.serve(async (req) => {

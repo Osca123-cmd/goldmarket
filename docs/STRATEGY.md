@@ -10,7 +10,10 @@ Semua aturan diimplementasikan di `src/core/` (dipakai identik oleh engine serve
 | Tick size | 0,01 | pembulatan harga |
 | Desimal | 2 | |
 | Contract size | 100 oz/lot | hanya untuk lot & P/L |
-| SL / TP1 / TP2 / TP3 | 50 / 50 / 100 / 150 pips | = 5 / 5 / 10 / 15 USD |
+| SL / TP1 / TP2 / TP3 — setup **M15** | 50 / 50 / 100 / 150 pips | = 5 / 5 / 10 / 15 USD |
+| SL / TP1 / TP2 / TP3 — setup **H1** | 100 / 100 / 200 / 300 pips | = 10 / 10 / 20 / 30 USD |
+
+Rencana per timeframe (`EngineConfig.planByTf`, `planFor`): pada harga emas ±$4.000, SL 50 pips ($5) lebih kecil dari ATR H1 hari kerja ($10–15), sehingga setup H1 hampir selalu gagal gate volatilitas. Karena itu H1 memakai rencana sendiri (keputusan pengguna, Okt 2026). Rencana tampil eksplisit di setiap setup.
 
 BUY dari 3000,00 → SL 2995,00, TP1 3005,00, TP2 3010,00, TP3 3015,00. SELL kebalikannya (`levelsFromEntry`). Pip size, tick size, desimal, contract size terpisah dan dapat diatur per pengguna (Pengaturan → Spesifikasi broker).
 
@@ -97,11 +100,12 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 
 ## 9. Probabilitas historis (terpisah dari skor)
 
-`runBacktest` (walk-forward, harian 00:20 UTC) mensimulasikan setup layak pada data historis tersimpan:
+Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAXG/USDT dari Binance, hanya jam pasar emas, satu potongan 7 hari per run. Probabilitas dihitung dari seluruh trade simulasi:
 - Pada tiap penutupan bar TF konteks, analisis hanya melihat candle tertutup ≤ t (`sliceClosed`).
 - **P(entry)** = entry tersentuh sebelum kedaluwarsa/invalid. **P(TPk)** = TPk tersentuh sebelum SL setelah entry aktif.
 - Biaya: spread/2 + slippage (+ komisi) digeser melawan posisi; TP harus menutup biaya.
 - SL dan TP tersentuh di candle yang sama → **ambigu, dihitung SL** (konservatif) dan dilaporkan jumlahnya.
+- Batas tahan 24 jam setelah entry (sama dengan pelacakan sinyal live); TP yang belum kena pada batas itu dihitung gagal.
 - 60% awal data = pengembangan, 40% akhir = pengujian. Yang ditampilkan hanya data uji, dengan n, periode, dan interval Wilson 95%.
 - Ditampilkan hanya bila n uji ≥ 30 (entry dan TP1). Jika tidak: “Probabilitas belum tersedia — validasi historis belum memadai.”
 
@@ -143,3 +147,40 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 - **Keterbatasan jujur**: tanpa LLM generatif tidak ada ringkasan bahasa Indonesia baru; judul tampil dalam bahasa asli + penjelasan Indonesia dari templat aturan. Aturan kata kunci bisa keliru membaca konteks (sarkasme, berita non-AS); baca sumbernya.
 - **Kalender ekonomi**: feed mingguan publik ForexFactory (`ff_calendar_thisweek.json`), diambil maksimal sekali per jam; hanya USD dampak High & Medium. Feed ini **tidak memuat angka actual** — UI hanya menampilkan forecast/previous. Jadwal minggu depan baru tersedia saat sumber memperbarui kalender di awal minggu.
 - **Peringatan sebelum news besar**: event USD High dalam ambang menit per pengguna (`user_settings.news_alert_minutes`, default 30, 5–240) → push `⚠️ NEWS BESAR {N} menit lagi: {judul} (USD)` sekali per event per pengguna (dedupe `user_alerts`, kunci `news:<event>`); lonceng in-app 30 menit sebelumnya. Bisa dimatikan di Pengaturan → jenis notifikasi "News besar".
+
+## 13. Kebersihan data & backtest manajemen posisi
+
+**Jam pasar emas.** PAXG diperdagangkan 24/7, sedangkan emas tutup di akhir pekan (Jumat 17:00 – Minggu 18:00 New York) dan jeda harian 17:00–18:00 New York. Bar di luar jam itu bukan harga emas, jadi `marketHoursOnly()` membuangnya sebelum disimpan dan sebelum backtest. Bar lama yang sempat tersimpan dibersihkan sekali oleh engine (`engine_state.maintenance.offhours_purged_v1`).
+
+**Backtest bertahap.**
+- Mode engine `backtest` berjalan tiap 10 menit dan menghitung satu potongan 7 hari (mulai Senin 00:00 UTC). Potongan diambil dari terbaru ke terlama sampai ±12 bulan (`BACKTEST_MONTHS`).
+- Data riwayat diambil langsung dari Binance dengan pemanasan H4 60 hari, H1 16 hari, M15 5 hari, dan M5 4 hari.
+- Trade disimpan di `backtest_trades`; status potongan di `backtest_chunks`.
+- `strategy_version` adalah hash dari konfigurasi strategi + versi kode. Bila strategi berubah, semua potongan dihitung ulang dan data versi lama dihapus.
+- Potongan berjalan diperbarui tiap 6 jam; potongan yang sudah lewat 1 hari setelah akhirnya dianggap final.
+
+**Manajemen posisi.** Setiap setup yang entry-nya tersentuh disimulasikan dengan tiga cara. Hasilnya dalam pips per trade, biaya sudah termasuk.
+
+| Varian | Aturan |
+|---|---|
+| A — TP1 penuh | Seluruh posisi keluar di TP1 atau SL. |
+| B — Bertahap 1/3, SL tetap | 1/3 posisi keluar di TP1, TP2, TP3; sisa kena SL. |
+| C — Bertahap 1/3 + BE setelah TP1 | Seperti B, tetapi setelah TP1 SL sisa posisi pindah ke entry. BE aktif mulai bar berikutnya, karena urutan di dalam bar tidak diketahui; keluar di BE = rugi sebesar biaya. |
+
+- Biaya: SL = jarak SL + biaya; TP = jarak TP penuh (TP harus menutup biaya). SL dan TP dalam satu candle dihitung SL.
+- Posisi yang lewat 24 jam ditutup di close terakhir. Trade yang datanya habis sebelum tuntas tidak dihitung.
+
+**Ringkasan** (`summarizeTrades`). Dihitung per grup (semua, strategi|TF, sesi, arah) dan per varian, dengan pemisahan kronologis 60% pengembangan / 40% uji (headline = uji):
+- n;
+- win rate (Wilson 95%);
+- ekspektasi pips ± 1,96·SE dan dalam R;
+- profit factor;
+- max drawdown;
+- total pips.
+
+Kesimpulan di UI disusun otomatis dan jujur:
+- "belum memadai" bila n < 30;
+- "belum terbukti punya edge" bila tidak ada varian yang positif;
+- "positif tapi belum signifikan" bila intervalnya mencakup nol.
+
+Kesimpulan ini bukan perintah. Jurnal tetap manual.
