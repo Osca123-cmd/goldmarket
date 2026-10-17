@@ -17,3 +17,4 @@ export * from "./backtest.ts";
 export * from "./providers.ts";
 export * from "./engine.ts";
 export * from "./outcome.ts";
+export * from "./news.ts";

@@ -1,5 +1,5 @@
 // GOLDMARKET engine — Supabase Edge Function (Deno).
-// Dipanggil pg_cron tiap menit (mode "tick") dan harian (mode "backtest").
+// Dipanggil pg_cron tiap menit (mode "tick"), tiap 15 menit (mode "news") dan harian (mode "backtest").
 // Semua secret dibaca dari environment server; tidak ada yang dikirim ke browser.
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import {
@@ -18,6 +18,17 @@ import {
   DEFAULT_BT,
   evaluateOutcome,
   readyTitle,
+  classifyGoldImpact,
+  dedupeNews,
+  eventsInAlertWindow,
+  explainImpact,
+  isGoldRelevant,
+  maxSimilarity,
+  newsEventBody,
+  newsEventTitle,
+  newsKey,
+  parseFfCalendar,
+  parseRss,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -36,6 +47,7 @@ const STORED_TFS: Timeframe[] = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const ANALYSIS_TFS: Timeframe[] = ["H4", "H1", "M15", "M5"];
 const SIGNAL_MAX_HOLD_SEC = Number(env("SIGNAL_MAX_HOLD_HOURS", "24")) * 3600;
 const APP_URL = env("APP_URL", "https://osca123-cmd.github.io/goldmarket/");
+const NEWS_BELL_MIN = 30; // notifikasi in-app (lonceng) untuk news besar, menit sebelum rilis
 
 type Db = SupabaseClient;
 const iso = (sec: number) => new Date(sec * 1000).toISOString();
@@ -453,13 +465,25 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     }
   }
 
+  // ---- news besar (kalender ekonomi): lonceng in-app 30 menit sebelumnya; push per pengguna di deliverPush ----
+  let upcoming: UpcomingEvent[] = [];
+  try {
+    const { data: soon } = await db.from("econ_events").select("event_key,title,country,impact,time_at,forecast,previous").eq("impact", "High").gt("time_at", iso(t0)).lte("time_at", iso(t0 + 240 * 60)).order("time_at").limit(20);
+    upcoming = (soon ?? []).map((e) => ({ ...e, timeSec: sec(e.time_at)! }));
+  } catch (e) {
+    console.error("econ", (e as Error).message);
+  }
+  for (const e of eventsInAlertWindow(upcoming, t0, NEWS_BELL_MIN)) {
+    notifRows.push({ kind: "news_event", dedupe_key: `news:${e.event_key}`, title: newsEventTitle(e, t0), body: newsEventBody(e), severity: "warning", setup_id: null, score: null, timeframe: null });
+  }
+
   let inserted: typeof notifRows = [];
   if (notifRows.length) {
     const { data: ins } = await db.from("notifications").upsert(notifRows, { onConflict: "dedupe_key", ignoreDuplicates: true }).select("kind,title,body,severity,setup_id,score,timeframe");
     inserted = (ins ?? []) as typeof notifRows;
   }
   try {
-    await deliverPush(db, inserted, price, cfg, t0);
+    await deliverPush(db, inserted, price, cfg, t0, upcoming);
   } catch (e) {
     console.error("push", (e as Error).message);
   }
@@ -508,7 +532,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
 // Web Push (HP/desktop, walau tab ditutup). Kunci privat VAPID hanya di Vault.
 // ---------------------------------------------------------------------------
 interface PushTarget { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; failures: number }
-interface PushPrefs { user_id: string; notify_kinds: Record<string, boolean>; min_score: Record<string, number>; near_entry_pips: number; pip_size: number }
+interface PushPrefs { user_id: string; notify_kinds: Record<string, boolean>; min_score: Record<string, number>; near_entry_pips: number; pip_size: number; news_alert_minutes: number }
+interface UpcomingEvent { event_key: string; title: string; country: string; impact: string; timeSec: number; forecast: string | null; previous: string | null }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WebPush = any;
@@ -529,15 +554,15 @@ async function vapid(db: Db): Promise<{ public: string; private: string }> {
   return again;
 }
 
-async function deliverPush(db: Db, fresh: { kind: string; title: string; body: string; setup_id: string | null; score: number | null; timeframe: string | null }[], price: number | null, cfg: EngineConfig, nowSec: number) {
+async function deliverPush(db: Db, fresh: { kind: string; title: string; body: string; setup_id: string | null; score: number | null; timeframe: string | null }[], price: number | null, cfg: EngineConfig, nowSec: number, upcoming: UpcomingEvent[] = []) {
   const { data: subs } = await db.from("push_subscriptions").select("id,user_id,endpoint,p256dh,auth,failures").limit(1000);
   if (!subs?.length) {
     await vapid(db); // pastikan kunci publik tersedia untuk klien
     return;
   }
   const users = [...new Set(subs.map((s) => s.user_id))];
-  const { data: prefRows } = await db.from("user_settings").select("user_id,notify_kinds,min_score,near_entry_pips,pip_size").in("user_id", users);
-  const prefs = new Map((prefRows ?? []).map((p) => [p.user_id, { ...p, near_entry_pips: Number(p.near_entry_pips), pip_size: Number(p.pip_size) } as PushPrefs]));
+  const { data: prefRows } = await db.from("user_settings").select("user_id,notify_kinds,min_score,near_entry_pips,pip_size,news_alert_minutes").in("user_id", users);
+  const prefs = new Map((prefRows ?? []).map((p) => [p.user_id, { ...p, near_entry_pips: Number(p.near_entry_pips), pip_size: Number(p.pip_size), news_alert_minutes: Number(p.news_alert_minutes ?? 30) } as PushPrefs]));
   const keys = await vapid(db);
   const webpush = await loadWebPush();
   webpush.setVapidDetails("mailto:noreply@goldmarket.app", keys.public, keys.private);
@@ -547,7 +572,7 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
     const p = prefs.get(uid);
     const kinds = p?.notify_kinds ?? {};
     for (const n of fresh) {
-      if (kinds[n.kind] === false) continue;
+      if (kinds[n.kind] === false || n.kind === "news_event") continue; // news_event: ambang menit per pengguna di bawah
       if (n.kind === "new_setup" && n.score != null && n.timeframe && n.score < (p?.min_score?.[n.timeframe] ?? 60)) continue;
       queue.push({ userId: uid, payload: { title: n.title, body: n.body, tag: `${n.kind}:${n.setup_id ?? ""}`, url: APP_URL + (n.setup_id ? "opportunities/" : "") } });
     }
@@ -577,6 +602,19 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
     }
   }
 
+  // "News besar sebentar lagi" per pengguna (ambang menit masing-masing), sekali per event
+  if (upcoming.length) {
+    for (const uid of users) {
+      const p = prefs.get(uid);
+      if (p?.notify_kinds?.news_event === false) continue;
+      for (const e of eventsInAlertWindow(upcoming, nowSec, p?.news_alert_minutes ?? NEWS_BELL_MIN)) {
+        const { error } = await db.from("user_alerts").insert({ user_id: uid, dedupe_key: `news:${e.event_key}`.slice(0, 200) });
+        if (error) continue;
+        queue.push({ userId: uid, payload: { title: newsEventTitle(e, nowSec), body: newsEventBody(e), tag: `news:${e.event_key}`, url: APP_URL + "news/" } });
+      }
+    }
+  }
+
   for (const q of queue.slice(0, 200)) {
     for (const sub of subs.filter((s) => s.user_id === q.userId) as PushTarget[]) {
       try {
@@ -589,6 +627,142 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// News AI (gratis, tanpa API key): RSS berita emas + kalender ekonomi ForexFactory.
+// Label dampak = aturan transparan (src/core/news.ts); relevansi = embedding gte-small
+// bawaan Supabase Edge Runtime bila tersedia. Bukan sinyal, bukan probabilitas.
+// ---------------------------------------------------------------------------
+const NEWS_FEEDS = [
+  { id: "gnews_gold", label: "Google News", url: "https://news.google.com/rss/search?q=gold+price+OR+XAUUSD+OR+%22Federal+Reserve%22+when:1d&hl=en-US&gl=US&ceid=US:en" },
+  { id: "gnews_macro", label: "Google News", url: "https://news.google.com/rss/search?q=%22gold%22+%28Fed+OR+dollar+OR+yields+OR+inflation%29+when:1d&hl=en-US&gl=US&ceid=US:en" },
+  { id: "inv_commodities", label: "Investing.com", url: "https://www.investing.com/rss/news_11.rss" },
+  { id: "inv_economy", label: "Investing.com", url: "https://www.investing.com/rss/news_14.rss" },
+];
+const FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
+const NEWS_MAX_AGE_SEC = 48 * 3600;
+const NEWS_MIN_RELEVANCE = Number(env("NEWS_MIN_RELEVANCE", "0"));
+const RELEVANCE_PROTOTYPES = [
+  "gold price outlook and bullion market",
+  "Federal Reserve interest rate decision and inflation",
+  "US dollar and Treasury yields move markets",
+  "geopolitical risk drives safe haven demand",
+];
+
+async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url, { headers: { "user-agent": "GOLDMARKET/1.0 (+news reader)", accept: "application/rss+xml, application/json, text/xml, */*" }, signal: AbortSignal.timeout(12_000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.text();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Embedder = { run: (text: string, opts: Record<string, unknown>) => Promise<any> };
+let embedder: Embedder | null | undefined;
+function getEmbedder(): Embedder | null {
+  if (embedder !== undefined) return embedder;
+  try {
+    // deno-lint-ignore no-explicit-any
+    const ai = (globalThis as any).Supabase?.ai;
+    embedder = ai ? new ai.Session("gte-small") : null;
+  } catch {
+    embedder = null;
+  }
+  return embedder ?? null;
+}
+async function embed(text: string): Promise<number[] | null> {
+  const e = getEmbedder();
+  if (!e) return null;
+  try {
+    const v = await e.run(text, { mean_pool: true, normalize: true });
+    return Array.isArray(v) || ArrayBuffer.isView(v) ? Array.from(v as ArrayLike<number>) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function news(db: Db) {
+  const t0 = Math.floor(Date.now() / 1000);
+  const feeds: Record<string, number | string> = {};
+
+  // ---- berita ----
+  const settled = await Promise.allSettled(NEWS_FEEDS.map(async (f) => ({ f, items: parseRss(await fetchText(f.url), f.label) })));
+  const all: { item: ReturnType<typeof parseRss>[number]; feed: string }[] = [];
+  settled.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      feeds[NEWS_FEEDS[i].id] = r.value.items.length;
+      for (const item of r.value.items) all.push({ item, feed: r.value.f.id });
+    } else feeds[NEWS_FEEDS[i].id] = scrub(String((r.reason as Error)?.message ?? r.reason));
+  });
+  const feedOf = new Map(all.map((a) => [newsKey(a.item.title), a.feed]));
+  const fresh = dedupeNews(all.map((a) => a.item)).filter((it) => isGoldRelevant(it.title, it.snippet) && (it.publishedAt == null || t0 - it.publishedAt <= NEWS_MAX_AGE_SEC)).slice(0, 60);
+
+  // hanya proses judul yang belum tersimpan
+  const keys = fresh.map((it) => newsKey(it.title));
+  const { data: existing } = keys.length ? await db.from("news_items").select("dedupe_key").in("dedupe_key", keys) : { data: [] };
+  const known = new Set((existing ?? []).map((r) => r.dedupe_key));
+  const todo = fresh.filter((it) => !known.has(newsKey(it.title)));
+
+  let protos: number[][] | null = null;
+  let embedded = 0;
+  const rows = [];
+  for (const it of todo) {
+    let relevance: number | null = null;
+    if (protos === null) protos = (await Promise.all(RELEVANCE_PROTOTYPES.map(embed))).filter((v): v is number[] => !!v);
+    if (protos.length) {
+      const v = await embed(`${it.title}. ${it.snippet}`);
+      if (v) {
+        relevance = Math.round(maxSimilarity(v, protos) * 1000) / 1000;
+        embedded++;
+      }
+    }
+    if (relevance != null && relevance < NEWS_MIN_RELEVANCE) continue;
+    const r = classifyGoldImpact(it.title, it.snippet);
+    rows.push({
+      dedupe_key: newsKey(it.title),
+      title: it.title,
+      link: it.link,
+      source: it.source,
+      feed: feedOf.get(newsKey(it.title)) ?? "rss",
+      published_at: it.publishedAt ? iso(it.publishedAt) : null,
+      snippet: it.snippet,
+      label: r.label,
+      confidence: r.confidence,
+      conflict: r.conflict,
+      rule_ids: r.ruleIds,
+      reasons: r.reasons,
+      explanation: explainImpact(r),
+      relevance,
+    });
+  }
+  if (rows.length) {
+    const { error } = await db.from("news_items").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
+    if (error) throw new Error(`news_items: ${error.message}`);
+  }
+
+  // ---- kalender ekonomi: maksimal sekali per jam (hormati sumber gratis) ----
+  let calendar: number | string = "cached";
+  const { data: last } = await db.from("econ_events").select("fetched_at").order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  if (!last || t0 - (sec(last.fetched_at) ?? 0) >= 3600) {
+    try {
+      const events = parseFfCalendar(JSON.parse(await fetchText(FF_URL)));
+      const fetchedAt = iso(t0);
+      if (events.length) {
+        const { error } = await db.from("econ_events").upsert(
+          events.map((e) => ({ event_key: e.key, title: e.title, country: e.country, impact: e.impact, time_at: iso(e.timeSec), forecast: e.forecast, previous: e.previous, fetched_at: fetchedAt })),
+          { onConflict: "event_key" },
+        );
+        if (error) throw new Error(error.message);
+        // event yang dijadwal ulang/dihapus sumber dalam rentang minggu ini
+        await db.from("econ_events").delete().gte("time_at", iso(events[0].timeSec)).lte("time_at", iso(events[events.length - 1].timeSec)).lt("fetched_at", fetchedAt);
+      }
+      calendar = events.length;
+    } catch (e) {
+      calendar = scrub((e as Error).message);
+    }
+  }
+
+  return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar };
 }
 
 async function backtest(db: Db, cfg: EngineConfig, pid: string) {
@@ -623,13 +797,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   }
   const body = await req.json().catch(() => ({}));
-  const mode = body?.mode === "backtest" ? "backtest" : "tick";
+  const mode = body?.mode === "backtest" ? "backtest" : body?.mode === "news" ? "news" : "tick";
   const { data: run } = await db.from("engine_runs").insert({ mode }).select("id").single();
   const { data: st } = await db.from("engine_state").select("config").eq("id", "engine").maybeSingle();
   const cfg = mergeConfig(st?.config ?? null);
   try {
     const pid = providerId(st?.config);
-    const result = mode === "backtest" ? await backtest(db, cfg, pid) : await tick(db, cfg, pid);
+    const result = mode === "backtest" ? await backtest(db, cfg, pid) : mode === "news" ? await news(db) : await tick(db, cfg, pid);
     await db.from("engine_runs").update({ finished_at: new Date().toISOString(), ok: !("error" in result && result.error), stats: result }).eq("id", run?.id);
     return new Response(JSON.stringify(result), { headers: { "content-type": "application/json" } });
   } catch (e) {
