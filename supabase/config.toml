@@ -1,0 +1,5 @@
+project_id = "goldmarket"
+
+[functions.engine]
+# Dipanggil oleh pg_cron dengan header x-engine-secret (bukan JWT pengguna)
+verify_jwt = false
