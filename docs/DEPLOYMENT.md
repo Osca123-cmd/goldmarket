@@ -25,7 +25,7 @@ Project yang sudah dibuat: `goldmarket` (ref `acyvxbqyxdorkrqeibtk`, region ap-s
 
 Konfigurasi engine tanpa deploy ulang:
 ```sql
-update public.engine_state set config = jsonb_build_object('provider','binance_paxg','minRrAfterCost',1.5,'engineMinScore',40) where id='engine';
+update public.engine_state set config = jsonb_build_object('provider','spot_hybrid','minRrAfterCost',1.5,'engineMinScore',40) where id='engine';
 ```
 
 ## 2. Frontend (static export)

@@ -7,7 +7,7 @@ import { isMarketOpenBySchedule } from "./sessions.ts";
  * API key dibaca dari environment server dan tidak pernah dikirim ke browser.
  */
 export interface MarketProvider {
-  id: "twelvedata" | "binance_paxg" | "demo";
+  id: "twelvedata" | "binance_paxg" | "spot_hybrid" | "demo";
   label: string;
   symbol: string;
   isDemo: boolean;
@@ -16,6 +16,10 @@ export interface MarketProvider {
   supportsBidAsk: boolean;
   fetchQuote(nowSec: number): Promise<Quote>;
   fetchCandles(tf: Timeframe, limit: number, endSec?: number): Promise<Candle[]>;
+  /** khusus spot_hybrid: selisih XAU spot − PAXG yang dipakai menggeser candle */
+  basis?: number | null;
+  /** keterangan sumber harga quote terakhir (mis. fallback) */
+  lastQuoteNote?: string | null;
 }
 
 export class ProviderError extends Error {
@@ -166,6 +170,71 @@ export function binancePaxg(fetchFn: Fetch = fetch): MarketProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Spot hybrid (tanpa API key): HARGA = XAU spot dari gold-api.com; CANDLE =
+// PAXG/USDT digeser "basis" (spot − PAXG mid) agar level sejajar harga spot.
+// Bila gold-api gagal, harga = PAXG mid + basis terakhir (ditandai).
+// ---------------------------------------------------------------------------
+export function parseGoldApi(json: unknown): { price: number; time: number } {
+  const j = json as { price?: number; updatedAt?: string; symbol?: string };
+  const price = Number(j.price);
+  if (!Number.isFinite(price) || price <= 0) throw new ProviderError("gold-api: harga tidak valid");
+  const t = j.updatedAt ? Date.parse(j.updatedAt) : NaN;
+  return { price, time: Number.isFinite(t) ? Math.floor(t / 1000) : NaN };
+}
+
+export function shiftCandles(candles: Candle[], basis: number): Candle[] {
+  return candles.map((c) => ({ ...c, open: c.open + basis, high: c.high + basis, low: c.low + basis, close: c.close + basis }));
+}
+
+export function spotHybrid(initialBasis: number | null, fetchFn: Fetch = fetch): MarketProvider {
+  const paxg = binancePaxg(fetchFn);
+  const p: MarketProvider = {
+    id: "spot_hybrid",
+    label: "XAU spot (gold-api.com) · candle PAXG disesuaikan",
+    symbol: "XAUUSD",
+    isDemo: false,
+    proxyNote:
+      "Harga = XAU spot (gold-api.com). Candle untuk chart & analisis = PAXG/USDT yang digeser selisih (basis) terhadap spot. Harga broker Anda bisa berbeda beberapa sen hingga dolar karena bid/ask, spread, dan feed broker.",
+    supportsBidAsk: false,
+    basis: initialBasis,
+    lastQuoteNote: null,
+    async fetchQuote(nowSec) {
+      const [spotRes, pq] = await Promise.allSettled([getJson(fetchFn, "https://api.gold-api.com/price/XAU").then(parseGoldApi), paxg.fetchQuote(nowSec)]);
+      if (pq.status === "rejected" && spotRes.status === "rejected") throw spotRes.reason;
+      const marketOpen = isMarketOpenBySchedule(nowSec * 1000);
+      if (spotRes.status === "fulfilled") {
+        const spot = spotRes.value;
+        const spotTime = Number.isFinite(spot.time) ? spot.time : nowSec;
+        // basis diperbarui saat pasar emas buka & harga spot segar (atau bila belum pernah ada)
+        if (pq.status === "fulfilled" && ((marketOpen && nowSec - spotTime < 300) || p.basis == null)) {
+          p.basis = spot.price - pq.value.price;
+        }
+        p.lastQuoteNote = null;
+        const b = p.basis ?? 0;
+        const d = pq.status === "fulfilled" ? pq.value : null;
+        return {
+          price: spot.price,
+          time: spotTime,
+          dayOpen: d?.dayOpen != null ? d.dayOpen + b : undefined,
+          dayHigh: d?.dayHigh != null ? Math.max(d.dayHigh + b, spot.price) : undefined,
+          dayLow: d?.dayLow != null ? Math.min(d.dayLow + b, spot.price) : undefined,
+          marketOpen,
+        };
+      }
+      const q = (pq as PromiseFulfilledResult<Quote>).value;
+      const b = p.basis ?? 0;
+      p.lastQuoteNote = "gold-api tidak merespons: harga sementara = PAXG + basis terakhir.";
+      return { ...q, bid: undefined, ask: undefined, price: q.price + b, dayOpen: q.dayOpen != null ? q.dayOpen + b : undefined, dayHigh: q.dayHigh != null ? q.dayHigh + b : undefined, dayLow: q.dayLow != null ? q.dayLow + b : undefined };
+    },
+    async fetchCandles(tf, limit, endSec) {
+      if (p.basis == null) throw new ProviderError("Basis spot−PAXG belum tersedia");
+      return shiftCandles(await paxg.fetchCandles(tf, limit, endSec), p.basis);
+    },
+  };
+  return p;
+}
+
+// ---------------------------------------------------------------------------
 // Demo: data SIMULASI deterministik (fungsi waktu). Selalu berstatus "Demo".
 // ---------------------------------------------------------------------------
 function hashNoise(n: number): number {
@@ -241,7 +310,8 @@ export function demoProvider(): MarketProvider {
   };
 }
 
-export function createProvider(id: string | undefined, env: { twelveDataKey?: string }, fetchFn: Fetch = fetch): MarketProvider {
+export function createProvider(id: string | undefined, env: { twelveDataKey?: string; basis?: number | null }, fetchFn: Fetch = fetch): MarketProvider {
+  if (id === "spot_hybrid") return spotHybrid(env.basis ?? null, fetchFn);
   if (id === "twelvedata") {
     if (!env.twelveDataKey) throw new ProviderError("TWELVEDATA_API_KEY belum diset");
     return twelveData(env.twelveDataKey, fetchFn);

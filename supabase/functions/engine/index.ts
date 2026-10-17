@@ -17,7 +17,7 @@ import {
   runEngineCycle,
   DEFAULT_BT,
   evaluateOutcome,
-  gradeOf,
+  readyTitle,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -58,9 +58,9 @@ async function authorized(db: Db, given: string): Promise<boolean> {
   return !error && data === true;
 }
 
-/** Provider: env MARKET_PROVIDER > engine_state.config.provider > binance_paxg. */
+/** Provider: env MARKET_PROVIDER > engine_state.config.provider > Twelve Data (bila key ada) > spot_hybrid. */
 function providerId(stateConfig: Record<string, unknown> | null | undefined): string {
-  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || "binance_paxg";
+  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || (env("TWELVEDATA_API_KEY") ? "twelvedata" : "spot_hybrid");
 }
 
 /** Pesan error aman untuk log/DB: tanpa API key. */
@@ -227,11 +227,11 @@ function setupRow(c: SetupCandidate, p: MarketProvider, price: number, session: 
 async function tick(db: Db, cfg: EngineConfig, pid: string) {
   const nowSec = () => Math.floor(Date.now() / 1000);
   const t0 = nowSec();
-  const provider = createProvider(pid, { twelveDataKey: env("TWELVEDATA_API_KEY") || undefined });
   const [{ data: snap }, { data: stateRow }] = await Promise.all([
     db.from("market_snapshot").select("*").eq("id", "current").maybeSingle(),
     db.from("engine_state").select("*").eq("id", "engine").maybeSingle(),
   ]);
+  const provider = createProvider(pid, { twelveDataKey: env("TWELVEDATA_API_KEY") || undefined, basis: stateRow?.basis ?? null });
   const state: Record<string, any> = stateRow ?? { id: "engine", last_candle_fetch: {}, backfilled: {} };
   if (state.provider && state.provider !== provider.id) {
     state.backfilled = {};
@@ -296,12 +296,16 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   // spread proxy (PAXG) bukan spread broker XAUUSD → tidak dipakai sebagai gate kualitas
   const spreadForEngine = provider.proxyNote && !provider.isDemo ? null : ((snapFields as { spread_pips?: number | null }).spread_pips ?? snap?.spread_pips ?? null);
 
+  if (provider.basis != null) state.basis = provider.basis;
+  const proxyNote = provider.proxyNote
+    ? provider.proxyNote + (provider.basis != null && provider.id === "spot_hybrid" ? ` Basis saat ini ${provider.basis >= 0 ? "+" : ""}${provider.basis.toFixed(2)} USD.` : "") + (provider.lastQuoteNote ? " " + provider.lastQuoteNote : "")
+    : null;
   if (failures === 0) {
     await db.from("market_snapshot").upsert({
       id: "current",
       source: provider.id,
       source_label: provider.label,
-      proxy_note: provider.proxyNote,
+      proxy_note: proxyNote,
       is_demo: provider.isDemo,
       supports_bid_ask: provider.supportsBidAsk,
       ...snapFields,
@@ -558,7 +562,7 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
 
   // "Harga mendekati entry" per pengguna (ambang masing-masing), dedupe via user_alerts
   if (price != null) {
-    const { data: near } = await db.from("setups").select("id,direction,timeframe,entry_price,score").eq("status", "approaching").eq("eligible", true).limit(50);
+    const { data: near } = await db.from("setups").select("id,direction,timeframe,entry_price,entry_low,entry_high,sl,tp1,score").eq("status", "approaching").eq("eligible", true).limit(50);
     for (const uid of users) {
       const p = prefs.get(uid);
       if (!p || p.notify_kinds?.near_entry === false) continue;
@@ -568,7 +572,7 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
         if (dist > p.near_entry_pips) continue;
         const { error } = await db.from("user_alerts").insert({ user_id: uid, dedupe_key: `near:${s.id}` });
         if (error) continue; // sudah pernah diberi tahu
-        queue.push({ userId: uid, payload: { title: `Harga mendekati entry — ${s.direction} ${s.timeframe}`, body: `Jarak ${dist.toFixed(1)} pips ke entry ${Number(s.entry_price).toFixed(2)}. Pemicu jarak, bukan jaminan peringatan sebelum entry tersentuh.`, tag: `near:${s.id}`, url: APP_URL + "opportunities/" } });
+        queue.push({ userId: uid, payload: { title: readyTitle(s.direction, s.timeframe, ` · ${dist.toFixed(1)} pips lagi`), body: `Harga mendekati zona ${Number(s.entry_low).toFixed(2)}–${Number(s.entry_high).toFixed(2)} (entry ${Number(s.entry_price).toFixed(2)}, SL ${Number(s.sl).toFixed(2)}, TP1 ${Number(s.tp1).toFixed(2)}). Siapkan platform Anda; pemicu jarak, bukan jaminan.`, tag: `near:${s.id}`, url: APP_URL + "opportunities/" } });
       }
     }
   }

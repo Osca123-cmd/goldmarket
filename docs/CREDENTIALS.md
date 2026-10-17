@@ -2,7 +2,7 @@
 
 | Item | Status | Yang perlu dilakukan |
 |---|---|---|
-| Data XAUUSD spot (Twelve Data) | **Belum** — saat ini memakai proxy Binance PAXG/USDT | Daftar di twelvedata.com, lalu di Supabase Dashboard → Edge Functions → Secrets: `TWELVEDATA_API_KEY`, `MARKET_PROVIDER=twelvedata`, `QUOTE_INTERVAL_SEC=300` (paket gratis). Periksa lisensi untuk penggunaan Anda. |
+| Data XAUUSD spot (Twelve Data) | **Belum** — saat ini memakai `spot_hybrid` (harga XAU spot gold-api.com, candle PAXG/USDT digeser basis) | Daftar di twelvedata.com, lalu di Supabase Dashboard → Edge Functions → Secrets: `TWELVEDATA_API_KEY`, `MARKET_PROVIDER=twelvedata`, `QUOTE_INTERVAL_SEC=300` (paket gratis). Periksa lisensi untuk penggunaan Anda. |
 | Hosting frontend | Build siap (`out/`) | Hubungkan repo ke Vercel/Netlify/Cloudflare Pages (lihat `DEPLOYMENT.md`) — membutuhkan login akun hosting Anda. |
 | Auth Site URL & Redirect URLs | Default `localhost` | Supabase → Authentication → URL Configuration: isi URL hosting, tambahkan `/login/` & `/reset-password/`. Wajib agar tautan konfirmasi email & reset password mengarah ke situs. |
 | SMTP email | SMTP bawaan Supabase (terbatas) | Pasang SMTP (Resend, Postmark, dll.) untuk produksi. |

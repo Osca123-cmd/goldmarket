@@ -46,7 +46,7 @@ Modul inti (TypeScript murni, tanpa dependensi runtime) di `src/core/`:
 | `strategies.ts` / `scoring.ts` | deteksi setup, gate wajib, skor |
 | `setups.ts` | identitas, dedupe, cooldown, lifecycle status |
 | `engine.ts` | satu siklus engine tanpa I/O |
-| `providers.ts` | Twelve Data, Binance PAXG (proxy), Demo |
+| `providers.ts` | Twelve Data, Spot hybrid (gold-api XAU spot + candle PAXG tergeser basis), Binance PAXG (proxy), Demo |
 | `sessions.ts` / `time.ts` | sesi IANA + DST, jadwal pasar |
 | `risk.ts` | ukuran lot & biaya |
 | `journal.ts` / `stats.ts` | P/L terealisasi, R, statistik, CSV |
@@ -75,7 +75,8 @@ Pilih provider dengan secret Edge Function `MARKET_PROVIDER` (atau `engine_state
 | Provider | Kredensial | Catatan |
 |---|---|---|
 | `twelvedata` (disarankan untuk XAUUSD) | `TWELVEDATA_API_KEY` | REST polling. Paket gratis 8 kredit/menit & 800/hari → set `QUOTE_INTERVAL_SEC=300` (status akan *Delayed*). WebSocket Twelve Data butuh paket berbayar. Tidak memberi bid/ask → spread "Tidak tersedia", RR memakai spread asumsi. |
-| `binance_paxg` (default saat ini) | tidak ada | **Proxy**: PAXG/USDT (token emas), bukan XAUUSD spot. Selisih harga & spread ditampilkan sebagai peringatan; sinyal tetap mengikuti jam pasar emas. |
+| `spot_hybrid` (default saat ini) | tidak ada | Harga = **XAU spot** dari gold-api.com. Candle chart & analisis = PAXG/USDT (Binance) yang digeser *basis* (spot − PAXG, diperbarui hanya saat pasar buka & spot segar, disimpan di `engine_state.basis`). Bila gold-api gagal: harga = PAXG + basis terakhir dan diberi catatan. Bid/ask tidak tersedia. |
+| `binance_paxg` | tidak ada | **Proxy**: PAXG/USDT (token emas), bukan XAUUSD spot — bisa selisih beberapa dolar dari spot. Selisih harga & spread ditampilkan sebagai peringatan; sinyal tetap mengikuti jam pasar emas. |
 | `demo` | tidak ada | Data simulasi deterministik, selalu berstatus **Demo**. |
 
 Pastikan lisensi provider mengizinkan penggunaan Anda (data pasar hanya dapat dibaca pengguna yang login).

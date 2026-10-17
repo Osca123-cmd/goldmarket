@@ -56,3 +56,6 @@ grant execute on function public.vapid_set(text, text) to service_role;
 
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check check (kind in ('new_setup','confirmed','entry_touched','invalid','expired','connection','signal_result'));
+
+-- basis spot − PAXG untuk provider spot_hybrid
+alter table public.engine_state add column if not exists basis double precision;

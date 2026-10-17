@@ -120,5 +120,6 @@ Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per 
 - Browser meminta izin hanya lewat tombol **Aktifkan notifikasi** (Live Opportunities, ikon lonceng, Pengaturan).
 - Langganan Web Push disimpan di `push_subscriptions` (RLS per pengguna). Kunci VAPID dibuat otomatis oleh engine; kunci privat hanya di Supabase Vault.
 - Engine mengirim push untuk: setup valid baru (≥ skor minimum per TF), konfirmasi, entry tersentuh, invalid/kedaluwarsa, hasil sinyal, gangguan koneksi, dan harga mendekati entry (ambang per pengguna, default 20 pips, sekali per setup).
+- Judul dibuat agar siap ditindaklanjuti **sebelum** zona tersentuh: setup baru → `🟢 READY BUY XAUUSD — M15` / `🔴 READY SELL XAUUSD — M15` (isi: zona, entry, SL, TP1–TP3, skor); mendekati entry → `READY … · X pips lagi`; lalu `✅ KONFIRMASI …`, `🎯 ZONA ENTRY TERSENTUH …`, `❌ SETUP BATAL …`, `⌛ SETUP KEDALUWARSA …`. Notifikasi bukan perintah eksekusi; website tidak mengirim order ke broker.
 - iPhone/iPad: wajib iOS 16.4+ dan aplikasi dibuka dari ikon **Layar Utama** (Bagikan → Tambahkan ke Layar Utama). Android: Chrome/Edge/Firefox.
 - Pengiriman tidak dijamin tepat waktu (jaringan, hemat baterai, kebijakan OS).

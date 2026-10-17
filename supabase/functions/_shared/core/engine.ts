@@ -60,6 +60,11 @@ export interface EngineOutput {
   session: string;
 }
 
+/** Judul notifikasi siap-siap: "🟢 READY BUY XAUUSD — M15" / "🔴 READY SELL XAUUSD — H1". */
+export function readyTitle(direction: "BUY" | "SELL", timeframe: string, suffix = ""): string {
+  return `${direction === "BUY" ? "🟢" : "🔴"} READY ${direction} XAUUSD — ${timeframe}${suffix}`;
+}
+
 const FEED_LABEL: Record<FeedStatus, string> = {
   live: "Live",
   delayed: "Delayed",
@@ -134,8 +139,8 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
         notifications.push({
           kind: "new_setup",
           dedupeKey: `new:${c.identityKey}`,
-          title: `Setup ${c.direction} baru — ${c.timeframe}`,
-          body: `${c.strategy === "trend_pullback" ? "Trend pullback" : "Breakout retest"} ${c.entryType} @ ${c.entry.toFixed(2)}, SL ${c.sl.toFixed(2)}, TP1 ${c.tp1.toFixed(2)}. Skor ${c.score.total}/100.`,
+          title: readyTitle(c.direction, c.timeframe),
+          body: `Zona ${c.entryLow.toFixed(2)}–${c.entryHigh.toFixed(2)} · entry ${c.entryType} ${c.entry.toFixed(2)} · SL ${c.sl.toFixed(2)} · TP1 ${c.tp1.toFixed(2)} · TP2 ${c.tp2.toFixed(2)} · TP3 ${c.tp3.toFixed(2)} · skor ${c.score.total}/100. Siapkan rencana; tunggu harga masuk zona & konfirmasi.`,
           setupIdentity: c.identityKey,
           severity: "info",
           score: c.score.total,
@@ -165,13 +170,13 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     if (!s.eligible) continue;
     for (const ev of upd.events) {
       if (ev === "confirmed")
-        notifications.push({ kind: "confirmed", dedupeKey: `confirmed:${s.id}`, title: `Konfirmasi entry terpenuhi — ${s.direction} ${s.timeframe}`, body: `Candle ${s.confirm_tf} tertutup mengonfirmasi area ${s.entry_low.toFixed(2)}–${s.entry_high.toFixed(2)}.`, setupId: s.id, severity: "success", timeframe: s.timeframe });
+        notifications.push({ kind: "confirmed", dedupeKey: `confirmed:${s.id}`, title: `✅ KONFIRMASI ${s.direction} XAUUSD — ${s.timeframe}`, body: `Candle ${s.confirm_tf} tertutup mengonfirmasi area ${s.entry_low.toFixed(2)}–${s.entry_high.toFixed(2)}.`, setupId: s.id, severity: "success", timeframe: s.timeframe });
       if (ev === "entry_touched")
-        notifications.push({ kind: "entry_touched", dedupeKey: `touched:${s.id}`, title: `Entry tersentuh — ${s.direction} ${s.timeframe}`, body: `Harga feed menyentuh ${s.entry_price.toFixed(2)}. Ini bukan konfirmasi bahwa Anda membuka posisi.`, setupId: s.id, severity: "info", timeframe: s.timeframe });
+        notifications.push({ kind: "entry_touched", dedupeKey: `touched:${s.id}`, title: `🎯 ZONA ENTRY TERSENTUH — ${s.direction} XAUUSD ${s.timeframe}`, body: `Harga feed menyentuh ${s.entry_price.toFixed(2)}. Ini bukan konfirmasi bahwa Anda membuka posisi.`, setupId: s.id, severity: "info", timeframe: s.timeframe });
       if (ev === "invalid")
-        notifications.push({ kind: "invalid", dedupeKey: `invalid:${s.id}`, title: `Setup invalid — ${s.direction} ${s.timeframe}`, body: upd.reason, setupId: s.id, severity: "danger", timeframe: s.timeframe });
+        notifications.push({ kind: "invalid", dedupeKey: `invalid:${s.id}`, title: `❌ SETUP BATAL (invalid) — ${s.direction} XAUUSD ${s.timeframe}`, body: upd.reason, setupId: s.id, severity: "danger", timeframe: s.timeframe });
       if (ev === "expired")
-        notifications.push({ kind: "expired", dedupeKey: `expired:${s.id}`, title: `Setup kedaluwarsa — ${s.direction} ${s.timeframe}`, body: upd.reason, setupId: s.id, severity: "warning", timeframe: s.timeframe });
+        notifications.push({ kind: "expired", dedupeKey: `expired:${s.id}`, title: `⌛ SETUP KEDALUWARSA — ${s.direction} XAUUSD ${s.timeframe}`, body: upd.reason, setupId: s.id, severity: "warning", timeframe: s.timeframe });
     }
   }
 
