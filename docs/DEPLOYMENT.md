@@ -36,7 +36,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable-key> \
 npm run build          # hasil di out/
 ```
 
-Hosting statis apa pun:
+Hosting aktif: **https://osca123-cmd.github.io/goldmarket/** (GitHub Pages dari branch `gh-pages`). Deploy ulang: `./scripts/deploy-gh-pages.sh`.
+
+Hosting statis lain:
 - **Vercel**: import repo `Osca123-cmd/goldmarket` (Root Directory default `./`), Framework Next.js, set dua env var di atas.
 - **Netlify / Cloudflare Pages**: build command `npm run build`, publish directory `out`.
 - **GitHub Pages / subpath**: set `NEXT_PUBLIC_BASE_PATH=/<repo>` saat build. Workflow contoh: `docs/github-pages-workflow.yml`.

@@ -4,6 +4,8 @@ Website analisis XAUUSD yang berfungsi nyata: data pasar → validasi data → a
 
 > **Pemberitahuan:** GOLDMARKET bersifat informasional, **tidak mengeksekusi order ke broker**, dan tidak menjamin hasil. Tidak ada klaim akurasi atau keuntungan; probabilitas hanya ditampilkan bila sudah divalidasi historis (lihat `docs/STRATEGY.md` §9).
 
+**Live:** https://osca123-cmd.github.io/goldmarket/
+
 ![Dashboard](docs/screenshots/desktop-dashboard.png)
 
 ## Fitur
