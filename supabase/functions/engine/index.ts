@@ -29,6 +29,7 @@ import {
   newsKey,
   parseFfCalendar,
   parseRss,
+  FED_POLICY,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -634,13 +635,13 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
 // Label dampak = aturan transparan (src/core/news.ts); relevansi = embedding gte-small
 // bawaan Supabase Edge Runtime bila tersedia. Bukan sinyal, bukan probabilitas.
 // ---------------------------------------------------------------------------
-const NEWS_FEEDS = [
+const NEWS_FEEDS: { id: string; label: string; url: string; only?: RegExp }[] = [
   { id: "gnews_gold", label: "Google News", url: "https://news.google.com/rss/search?q=gold+price+OR+XAUUSD+OR+%22Federal+Reserve%22+when:1d&hl=en-US&gl=US&ceid=US:en" },
   { id: "gnews_macro", label: "Google News", url: "https://news.google.com/rss/search?q=%22gold%22+%28Fed+OR+dollar+OR+yields+OR+inflation%29+when:1d&hl=en-US&gl=US&ceid=US:en" },
   { id: "inv_commodities", label: "Investing.com", url: "https://www.investing.com/rss/news_11.rss" },
   { id: "inv_economy", label: "Investing.com", url: "https://www.investing.com/rss/news_14.rss" },
   { id: "inv_forex", label: "Investing.com", url: "https://www.investing.com/rss/news_1.rss" },
-  { id: "fed_press", label: "Federal Reserve", url: "https://www.federalreserve.gov/feeds/press_all.xml" },
+  { id: "fed_press", label: "Federal Reserve", url: "https://www.federalreserve.gov/feeds/press_all.xml", only: FED_POLICY },
   { id: "cnbc_economy", label: "CNBC", url: "https://www.cnbc.com/id/20910258/device/rss/rss.html" },
   { id: "mw_top", label: "MarketWatch", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories" },
 ];
@@ -698,7 +699,7 @@ async function news(db: Db) {
   settled.forEach((r, i) => {
     if (r.status === "fulfilled") {
       feeds[NEWS_FEEDS[i].id] = r.value.items.length;
-      for (const item of r.value.items) all.push({ item, feed: r.value.f.id });
+      for (const item of r.value.items) if (!r.value.f.only || r.value.f.only.test(item.title)) all.push({ item, feed: r.value.f.id });
     } else feeds[NEWS_FEEDS[i].id] = scrub(String((r.reason as Error)?.message ?? r.reason));
   });
   const feedOf = new Map(all.map((a) => [newsKey(a.item.title), a.feed]));
@@ -750,6 +751,11 @@ async function news(db: Db) {
     const { error } = await db.from("news_items").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
     if (error) throw new Error(`news_items: ${error.message}`);
   }
+
+  // ---- retensi: berita > 7 hari, event > 14 hari, rilis Fed non-kebijakan ----
+  await db.from("news_items").delete().lt("created_at", iso(t0 - 7 * 86400));
+  await db.from("econ_events").delete().lt("time_at", iso(t0 - 14 * 86400));
+  await db.from("news_items").delete().eq("feed", "fed_press").not("title", "imatch", FED_POLICY.source.replace(/\\b/g, "\\y"));
 
   // ---- kalender ekonomi: maksimal sekali per jam (hormati sumber gratis) ----
   let calendar: number | string = "cached";

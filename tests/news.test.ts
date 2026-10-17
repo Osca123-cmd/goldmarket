@@ -5,6 +5,7 @@ import {
   dedupeNews,
   eventsInAlertWindow,
   explainImpact,
+  FED_POLICY,
   isGoldRelevant,
   newsEventBody,
   newsEventTitle,
@@ -85,6 +86,9 @@ describe("relevance & classification", () => {
     ["Central banks keep buying gold, WGC says", "bullish"],
     ["CPI cools more than expected in September", "bullish"],
     ["Gold traders await Powell speech", "neutral"],
+    ["U.S. dollar snaps four-week win streak, helping the euro halt a five-week slide", "bullish"],
+    ["Canadian dollar heads for weekly gain as U.S. dollar retreats", "bullish"],
+    ["Australian dollar rises on strong jobs data", "neutral"],
   ];
   for (const [title, label] of cases) {
     it(`${label}: ${title}`, () => expect(classifyGoldImpact(title).label).toBe(label));
@@ -112,6 +116,13 @@ describe("relevance & classification", () => {
 
   it("explanation for neutral with no drivers", () => {
     expect(explainImpact(classifyGoldImpact("Gold traders await Powell speech"))).toMatch(/^Netral: tidak terdeteksi/);
+  });
+
+  it("Fed policy filter keeps FOMC releases, drops bank enforcement/approvals", () => {
+    expect(FED_POLICY.test("Federal Reserve issues FOMC statement")).toBe(true);
+    expect(FED_POLICY.test("Minutes of the Federal Open Market Committee, September 15-16")).toBe(true);
+    expect(FED_POLICY.test("Federal Reserve Board announces approval of application by BancFirst Corporation")).toBe(false);
+    expect(FED_POLICY.test("Federal Reserve Board issues enforcement action with Ontario Bancorporation, Inc.")).toBe(false);
   });
 
   it("cosine", () => {

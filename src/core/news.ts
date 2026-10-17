@@ -112,6 +112,9 @@ export function dedupeNews(items: NewsItem[]): NewsItem[] {
 
 const RELEVANT = /\b(gold|xau|xauusd|bullion|precious metals?|fed|fomc|federal reserve|powell|treasur(?:y|ies)|yields?|dollar|usd|greenback|cpi|pce|inflation|payrolls?|nfp|jobs report|unemployment|rate (?:cut|hike)s?|safe[- ]haven)\b/i;
 
+/** Rilis Federal Reserve yang relevan untuk pasar (bukan izin bank / enforcement). */
+export const FED_POLICY = /\b(?:fomc|federal open market committee|monetary policy|discount rate|interest on reserve|economic projections|minutes|beige book|statement)\b/i;
+
 /** Gerbang relevansi kata kunci untuk berita yang memengaruhi emas. */
 export function isGoldRelevant(title: string, snippet = ""): boolean {
   return RELEVANT.test(`${title} ${snippet}`);
@@ -126,22 +129,29 @@ interface Rule {
   weight: number;
   re: RegExp;
   reason: string;
+  /** hanya berlaku untuk data AS: dilewati bila berita jelas tentang negara lain */
+  usOnly?: boolean;
 }
 
+const FOREIGN = /\b(?:australia|australian|aussie|canada|canadian|uk|britain|british|euro ?zone|ecb|germany|german|japan|japanese|boj|china|chinese|new zealand|rba|boc|boe|swiss)\b/;
+const US = /\b(?:u\.s\.|us|united states|american|america|fed|fomc|treasur(?:y|ies))\b/;
+
+// "dollar" milik negara lain (Canadian dollar, Aussie dollar, …) bukan USD
+const NOT_USD = "(?<!(?:canadian|australian|aussie|kiwi|new zealand|singapore|hong kong|taiwan|taiwanese) )";
 const UP = "rises?|rose|jumps?|gains?|climbs?|rall(?:y|ies)|surges?|soars?|advances?|rebounds?|higher|firms?|strengthens?|spikes?";
 const DOWN = "falls?|fell|drops?|slips?|slides?|declines?|retreats?|tumbles?|plunges?|sinks?|lower|loses?|eases?|weakens?|slumps?";
 
 export const NEWS_RULES: Rule[] = [
   { id: "fed_dovish", dir: 1, weight: 2, re: /\brates? cuts?\b|\bcut(?:s|ting)? (?:interest )?rates?\b|\bdovish\b|\bmonetary easing\b/, reason: "Arah pemangkasan suku bunga (dovish) → imbal hasil turun → mendukung emas" },
   { id: "fed_hawkish", dir: -1, weight: 2, re: /\brates? hikes?\b|\bhike(?:s|d)? (?:interest )?rates?\b|\bhawkish\b|\bhigher for longer\b|\b(?:monetary|policy) tightening\b/, reason: "Arah suku bunga tinggi (hawkish) → menekan emas" },
-  { id: "usd_weak", dir: 1, weight: 2, re: new RegExp(`\\b(?:dollar|usd|greenback)\\b[^.]{0,20}?\\b(?:${DOWN})\\b|\\bweak(?:er)? (?:us )?dollar\\b`), reason: "USD melemah → emas lebih murah bagi pembeli non-USD" },
-  { id: "usd_strong", dir: -1, weight: 2, re: new RegExp(`\\b(?:dollar|usd|greenback)\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bstrong(?:er)? (?:us )?dollar\\b`), reason: "USD menguat → menekan emas" },
-  { id: "yields_down", dir: 1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${DOWN})\\b|\\bbond rally\\b`), reason: "Imbal hasil obligasi turun → biaya peluang memegang emas turun" },
-  { id: "yields_up", dir: -1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bbond (?:sell-?off|rout)\\b`), reason: "Imbal hasil obligasi naik → menekan emas" },
-  { id: "inflation_hot", dir: -1, weight: 2, re: /\b(?:hot|hotter|sticky|accelerating|higher[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:heats? up|accelerates?|jumps?|beats?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b/, reason: "Inflasi AS di atas perkiraan → peluang suku bunga tinggi lebih lama → menekan emas" },
-  { id: "inflation_cool", dir: 1, weight: 2, re: /\b(?:cool(?:er|ing)?|soft(?:er)?|slower|lower[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:cools?|eases?|slows?|softens?|misses?|below (?:forecasts?|expectations))\b/, reason: "Inflasi AS melandai → ruang pemangkasan suku bunga → mendukung emas" },
-  { id: "us_data_weak", dir: 1, weight: 2, re: /\b(?:weak(?:er)?|soft(?:er)?|disappointing|dismal)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi|jobless)\b[^.]{0,30}?\b(?:miss(?:es|ed)?|weak(?:er)?|disappoint\w*|slow(?:s|ed|ing|down)?|contract\w*|below (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:rises?|rose|jumps?|climbs?|higher)\b|\bjobless claims\b[^.]{0,20}?\b(?:rise|rises|rose|jump|jumps|climb)\b/, reason: "Data ekonomi AS lemah → peluang pemangkasan suku bunga → mendukung emas" },
-  { id: "us_data_strong", dir: -1, weight: 2, re: /\b(?:strong(?:er)?|robust|blowout|solid)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi)\b[^.]{0,30}?\b(?:beats?|strong(?:er)?|robust|surges?|jumps?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:falls?|fell|drops?|lower)\b/, reason: "Data ekonomi AS kuat → USD & imbal hasil cenderung naik → menekan emas" },
+  { id: "usd_weak", dir: 1, weight: 2, re: new RegExp(`${NOT_USD}\\b(?:dollar|usd|greenback)\\b[^.]{0,20}?\\b(?:${DOWN}|snaps? (?:a )?(?:\\w+-week |\\w+-day )?(?:win(?:ning)? )?streak)\\b|\\bweak(?:er)? (?:us )?dollar\\b`), reason: "USD melemah → emas lebih murah bagi pembeli non-USD" },
+  { id: "usd_strong", dir: -1, weight: 2, re: new RegExp(`${NOT_USD}\\b(?:dollar|usd|greenback)\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bstrong(?:er)? (?:us )?dollar\\b`), reason: "USD menguat → menekan emas" },
+  { id: "yields_down", usOnly: true, dir: 1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${DOWN})\\b|\\bbond rally\\b`), reason: "Imbal hasil obligasi turun → biaya peluang memegang emas turun" },
+  { id: "yields_up", usOnly: true, dir: -1, weight: 2, re: new RegExp(`\\b(?:yields?|treasur(?:y|ies))\\b[^.]{0,20}?\\b(?:${UP})\\b|\\bbond (?:sell-?off|rout)\\b`), reason: "Imbal hasil obligasi naik → menekan emas" },
+  { id: "inflation_hot", usOnly: true, dir: -1, weight: 2, re: /\b(?:hot|hotter|sticky|accelerating|higher[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:heats? up|accelerates?|jumps?|beats?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b/, reason: "Inflasi AS di atas perkiraan → peluang suku bunga tinggi lebih lama → menekan emas" },
+  { id: "inflation_cool", usOnly: true, dir: 1, weight: 2, re: /\b(?:cool(?:er|ing)?|soft(?:er)?|slower|lower[- ]than[- ]expected)\b[^.]{0,15}?\b(?:inflation|cpi|pce|consumer prices)\b|\b(?:inflation|cpi|pce)\b[^.]{0,20}?\b(?:cools?|eases?|slows?|softens?|misses?|below (?:forecasts?|expectations))\b/, reason: "Inflasi AS melandai → ruang pemangkasan suku bunga → mendukung emas" },
+  { id: "us_data_weak", usOnly: true, dir: 1, weight: 2, re: /\b(?:weak(?:er)?|soft(?:er)?|disappointing|dismal)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi|jobless)\b[^.]{0,30}?\b(?:miss(?:es|ed)?|weak(?:er)?|disappoint\w*|slow(?:s|ed|ing|down)?|contract\w*|below (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:rises?|rose|jumps?|climbs?|higher)\b|\bjobless claims\b[^.]{0,20}?\b(?:rise|rises|rose|jump|jumps|climb)\b/, reason: "Data ekonomi AS lemah → peluang pemangkasan suku bunga → mendukung emas" },
+  { id: "us_data_strong", usOnly: true, dir: -1, weight: 2, re: /\b(?:strong(?:er)?|robust|blowout|solid)\b[^.]{0,15}?\b(?:jobs?|payrolls?|employment|gdp|retail sales|(?:us |u\.s\. |economic )?data)\b|\b(?:jobs?|payrolls?|nfp|employment|gdp|retail sales|pmi)\b[^.]{0,30}?\b(?:beats?|strong(?:er)?|robust|surges?|jumps?|tops? (?:forecasts?|expectations)|above (?:forecasts?|expectations))\b|\bunemployment\b[^.]{0,20}?\b(?:falls?|fell|drops?|lower)\b/, reason: "Data ekonomi AS kuat → USD & imbal hasil cenderung naik → menekan emas" },
   { id: "safe_haven", dir: 1, weight: 2, re: /\bsafe[- ]haven\b|\bgeopolitic\w*|\b(?:war|missile|airstrikes?|invasion|sanctions?)\b|\b(?:tensions?|crisis|turmoil|recession fears?|stock (?:market )?sell-?off|market rout)\b/, reason: "Risiko geopolitik/ketidakpastian → permintaan aset aman (safe haven)" },
   { id: "risk_on", dir: -1, weight: 2, re: /\b(?:ceasefire|truce|peace (?:deal|talks|agreement)|de-?escalat\w*|trade deal)\b/, reason: "Ketegangan mereda → permintaan safe haven berkurang" },
   { id: "demand_up", dir: 1, weight: 2, re: /\bcentral banks?\b[^.]{0,30}?\b(?:buy\w*|purchases?|add(?:s|ed|ing)?)\b|\b(?:etf|fund) inflows?\b/, reason: "Pembelian bank sentral / arus masuk ETF → permintaan emas" },
@@ -163,7 +173,9 @@ export function classifyGoldImpact(title: string, snippet = ""): ImpactResult {
   let neg = 0;
   const ruleIds: string[] = [];
   const reasons: string[] = [];
+  const foreignOnly = FOREIGN.test(text) && !US.test(text);
   for (const r of NEWS_RULES) {
+    if (r.usOnly && foreignOnly) continue;
     const m = r.re.exec(text);
     if (!m) continue;
     const before = text.slice(Math.max(0, m.index - 30), m.index);
