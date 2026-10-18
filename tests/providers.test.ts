@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { marketHoursOnly, parseGoldApi, parseTwelveDataQuote, parseTwelveDataSeries, spotHybrid } from "../src/core/providers.ts";
+import { createProvider, marketHoursOnly, parseGoldApi, parseTwelveDataQuote, parseTwelveDataSeries, spotHybrid, tdHybrid, usesTwelveDataCandles } from "../src/core/providers.ts";
 
 const WED = Date.parse("2026-10-14T09:00:00Z") / 1000; // pasar buka
 const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
@@ -28,6 +28,28 @@ describe("provider", () => {
     expect(p.basis).toBeCloseTo(2.03, 6);
     const c = await p.fetchCandles("M5", 2, WED);
     expect(c[1].close).toBeCloseTo(4165 + 2.03, 6);
+  });
+
+  it("td hybrid: harga = XAU spot gold-api, candle = XAU/USD Twelve Data tanpa digeser, tanpa quote Twelve Data", async () => {
+    const calls: string[] = [];
+    const base = fakeFetch(4166.1, 4164.07);
+    const f = (url: string) => {
+      calls.push(url);
+      if (url.includes("twelvedata")) return json({ values: [{ datetime: "2026-10-14 09:00:00", open: "4165", high: "4167", low: "4164", close: "4166.4" }] });
+      return base(url);
+    };
+    const p = tdHybrid("KEY", null, f as never);
+    const q = await p.fetchQuote(WED);
+    expect(q.price).toBe(4166.1);
+    expect(p.basis).toBeCloseTo(2.03, 6);
+    const c = await p.fetchCandles("M15", 12, WED);
+    expect(c[0].close).toBe(4166.4);
+    expect(calls.filter((u) => u.includes("twelvedata"))).toHaveLength(1);
+    expect(calls.some((u) => u.includes("twelvedata.com/quote"))).toBe(false);
+    expect(usesTwelveDataCandles("td_hybrid")).toBe(true);
+    expect(usesTwelveDataCandles("spot_hybrid")).toBe(false);
+    expect(() => createProvider("td_hybrid", {})).toThrow(/TWELVEDATA_API_KEY/);
+    expect(createProvider("td_hybrid", { twelveDataKey: "KEY" }).id).toBe("td_hybrid");
   });
 
   it("spot hybrid: gold-api gagal → PAXG + basis terakhir dan ditandai", async () => {

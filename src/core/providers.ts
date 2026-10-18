@@ -7,7 +7,7 @@ import { isMarketOpenBySchedule } from "./sessions.ts";
  * API key dibaca dari environment server dan tidak pernah dikirim ke browser.
  */
 export interface MarketProvider {
-  id: "twelvedata" | "binance_paxg" | "spot_hybrid" | "demo";
+  id: "twelvedata" | "td_hybrid" | "binance_paxg" | "spot_hybrid" | "demo";
   label: string;
   symbol: string;
   isDemo: boolean;
@@ -16,7 +16,7 @@ export interface MarketProvider {
   supportsBidAsk: boolean;
   fetchQuote(nowSec: number): Promise<Quote>;
   fetchCandles(tf: Timeframe, limit: number, endSec?: number): Promise<Candle[]>;
-  /** khusus spot_hybrid: selisih XAU spot − PAXG yang dipakai menggeser candle */
+  /** spot_hybrid/td_hybrid: selisih XAU spot − PAXG (spot_hybrid: penggeser candle; td_hybrid: hanya open/high/low harian) */
   basis?: number | null;
   /** keterangan sumber harga quote terakhir (mis. fallback) */
   lastQuoteNote?: string | null;
@@ -235,6 +235,41 @@ export function spotHybrid(initialBasis: number | null, fetchFn: Fetch = fetch):
 }
 
 // ---------------------------------------------------------------------------
+// Twelve Data hybrid (default bila TWELVEDATA_API_KEY ada): HARGA = XAU spot
+// gold-api.com seperti spot_hybrid (gratis, tiap menit); CANDLE = XAU/USD asli
+// Twelve Data tanpa penggeseran. Quote Twelve Data tidak dipakai agar kredit
+// paket gratis (800/hari) cukup untuk candle saja (~470/hari tanpa M1).
+// ---------------------------------------------------------------------------
+export function tdHybrid(apiKey: string, initialBasis: number | null, fetchFn: Fetch = fetch): MarketProvider {
+  const spot = spotHybrid(initialBasis, fetchFn);
+  const td = twelveData(apiKey, fetchFn);
+  const p: MarketProvider = {
+    id: "td_hybrid",
+    label: "XAU spot (gold-api.com) · candle XAU/USD Twelve Data",
+    symbol: "XAUUSD",
+    isDemo: false,
+    proxyNote:
+      "Harga = XAU spot (gold-api.com). Candle untuk chart & analisis = XAU/USD dari Twelve Data. Open/high/low harian diperkirakan dari PAXG + basis. Harga broker Anda bisa berbeda beberapa sen hingga dolar karena bid/ask, spread, dan feed broker.",
+    supportsBidAsk: false,
+    basis: initialBasis,
+    lastQuoteNote: null,
+    async fetchQuote(nowSec) {
+      const q = await spot.fetchQuote(nowSec);
+      p.basis = spot.basis;
+      p.lastQuoteNote = spot.lastQuoteNote;
+      return q;
+    },
+    fetchCandles: (tf, limit, endSec) => td.fetchCandles(tf, limit, endSec),
+  };
+  return p;
+}
+
+/** Provider yang candle-nya dari Twelve Data (kredit terbatas): ambil hanya saat bar baru, tanpa M1. */
+export function usesTwelveDataCandles(id: string | null | undefined): boolean {
+  return id === "twelvedata" || id === "td_hybrid";
+}
+
+// ---------------------------------------------------------------------------
 // Demo: data SIMULASI deterministik (fungsi waktu). Selalu berstatus "Demo".
 // ---------------------------------------------------------------------------
 function hashNoise(n: number): number {
@@ -322,9 +357,9 @@ export function demoProvider(): MarketProvider {
 
 export function createProvider(id: string | undefined, env: { twelveDataKey?: string; basis?: number | null }, fetchFn: Fetch = fetch): MarketProvider {
   if (id === "spot_hybrid") return spotHybrid(env.basis ?? null, fetchFn);
-  if (id === "twelvedata") {
+  if (id === "twelvedata" || id === "td_hybrid") {
     if (!env.twelveDataKey) throw new ProviderError("TWELVEDATA_API_KEY belum diset");
-    return twelveData(env.twelveDataKey, fetchFn);
+    return id === "td_hybrid" ? tdHybrid(env.twelveDataKey, env.basis ?? null, fetchFn) : twelveData(env.twelveDataKey, fetchFn);
   }
   if (id === "binance_paxg") return binancePaxg(fetchFn);
   return demoProvider();

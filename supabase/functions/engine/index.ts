@@ -8,6 +8,7 @@ import {
   ProviderError,
   backoffSeconds,
   createProvider,
+  usesTwelveDataCandles,
   dedupeCandles,
   marketHoursOnly,
   deriveFeedStatus,
@@ -79,9 +80,9 @@ async function authorized(db: Db, given: string): Promise<boolean> {
   return !error && data === true;
 }
 
-/** Provider: env MARKET_PROVIDER > engine_state.config.provider > Twelve Data (bila key ada) > spot_hybrid. */
+/** Provider: env MARKET_PROVIDER > engine_state.config.provider > td_hybrid (bila key Twelve Data ada) > spot_hybrid. */
 function providerId(stateConfig: Record<string, unknown> | null | undefined): string {
-  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || (env("TWELVEDATA_API_KEY") ? "twelvedata" : "spot_hybrid");
+  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || (env("TWELVEDATA_API_KEY") ? "td_hybrid" : "spot_hybrid");
 }
 
 /** Pesan error aman untuk log/DB: tanpa API key. */
@@ -123,7 +124,7 @@ async function upsertCandles(db: Db, source: string, tf: Timeframe, candles: Can
 }
 
 function backfillSize(p: MarketProvider, tf: Timeframe): number {
-  if (p.id === "twelvedata") return tf === "M1" ? 1000 : 5000;
+  if (usesTwelveDataCandles(p.id)) return tf === "M1" ? 1000 : 5000;
   return { M1: 1000, M5: 5000, M15: 3000, M30: 2000, H1: 2000, H4: 1000, D1: 500 }[tf];
 }
 
@@ -131,8 +132,9 @@ function backfillSize(p: MarketProvider, tf: Timeframe): number {
 async function refreshCandles(db: Db, p: MarketProvider, state: Record<string, unknown>, nowSec: number) {
   const lastFetch = (state.last_candle_fetch ?? {}) as Record<string, number>;
   const backfilled = (state.backfilled ?? {}) as Record<string, boolean>;
-  const tfs = STORED_TFS.filter((tf) => tf !== "M1" || p.id !== "twelvedata" || env("TD_INCLUDE_M1") === "true");
-  let budget = p.id === "twelvedata" ? Number(env("TD_CREDITS_PER_RUN", "6")) : 20;
+  const td = usesTwelveDataCandles(p.id);
+  const tfs = STORED_TFS.filter((tf) => tf !== "M1" || !td || env("TD_INCLUDE_M1") === "true");
+  let budget = td ? Number(env("TD_CREDITS_PER_RUN", "6")) : 20;
   let backfills = 0;
   const fetched: Record<string, number> = {};
   for (const tf of tfs) {
@@ -141,7 +143,7 @@ async function refreshCandles(db: Db, p: MarketProvider, state: Record<string, u
     const last = lastFetch[tf] ?? 0;
     const newBar = Math.floor(nowSec / step) > Math.floor(last / step);
     // Twelve Data (kredit terbatas): hanya saat bar baru. Provider lain: juga perbarui bar berjalan tiap 5 menit.
-    const due = newBar || (p.id !== "twelvedata" && nowSec - last >= Math.min(step, 300));
+    const due = newBar || (!td && nowSec - last >= Math.min(step, 300));
     if (!backfilled[tf]) {
       if (backfills >= 2) continue;
       const c = marketHoursOnly(await p.fetchCandles(tf, backfillSize(p, tf), nowSec), tf);

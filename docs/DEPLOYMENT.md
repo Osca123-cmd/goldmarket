@@ -19,7 +19,7 @@ Project yang sudah dibuat: `goldmarket` (ref `acyvxbqyxdorkrqeibtk`, region ap-s
    npm run sync:core
    supabase functions deploy engine --no-verify-jwt
    ```
-5. Secret Edge Function (opsional): `supabase secrets set MARKET_PROVIDER=twelvedata TWELVEDATA_API_KEY=... QUOTE_INTERVAL_SEC=300`.
+5. Secret Edge Function (opsional): `supabase secrets set TWELVEDATA_API_KEY=...` → provider otomatis `td_hybrid` (harga gold-api, candle XAU/USD Twelve Data; muat paket gratis). `MARKET_PROVIDER=twelvedata` (harga juga dari Twelve Data) butuh `QUOTE_INTERVAL_SEC=300` atau lebih di paket gratis.
    Variabel lain: `MAX_RETRIES` (6), `ASSUMED_SPREAD_PIPS` (3), `TD_CREDITS_PER_RUN` (6), `TD_INCLUDE_M1` (false), `BACKTEST_BARS` (1500).
 6. Auth → URL Configuration: isi **Site URL** dengan URL frontend dan tambahkan `<url>/login/` serta `<url>/reset-password/` ke **Redirect URLs** (dibutuhkan untuk tautan konfirmasi email & reset password). Untuk produksi, pasang SMTP sendiri (SMTP bawaan Supabase dibatasi beberapa email/jam).
 

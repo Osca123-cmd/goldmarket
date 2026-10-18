@@ -19,6 +19,7 @@ import { fetchCandles, isActiveSignal, type SetupRow } from "@/lib/market";
 import { atr, ema, rsi } from "@/core/indicators";
 import { TF_SECONDS, TIMEFRAMES, type Candle, type Timeframe } from "@/core/types";
 import { STRATEGY_LABEL } from "@/core/config";
+import { usesTwelveDataCandles } from "@/core/providers";
 
 export default function Page() {
   return (
@@ -69,6 +70,13 @@ function ChartPage() {
     };
   }, [snapshot?.source, tf]);
 
+  // candle Twelve Data tidak menyimpan M1 (hemat kredit paket gratis)
+  const noM1 = usesTwelveDataCandles(snapshot?.source);
+  const tfs = noM1 ? TIMEFRAMES.filter((t) => t !== "M1") : TIMEFRAMES;
+  useEffect(() => {
+    if (noM1 && tf === "M1") setTf("M5");
+  }, [noM1, tf]);
+
   const activeSetups = setups.filter((s) => isActiveSignal(s));
   const setup = setups.find((s) => s.id === setupId) ?? null;
 
@@ -91,7 +99,7 @@ function ChartPage() {
           <Card>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap gap-1" role="group" aria-label="Timeframe">
-                {TIMEFRAMES.map((t) => (
+                {tfs.map((t) => (
                   <button key={t} onClick={() => setTf(t)} className={cx("rounded-lg border px-2.5 py-1 text-xs font-semibold", tf === t ? "border-gold bg-gold/15 text-gold" : "border-line text-muted hover:text-ink")}>
                     {t}
                   </button>
