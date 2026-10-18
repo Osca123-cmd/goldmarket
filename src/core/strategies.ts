@@ -5,6 +5,7 @@ import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
 import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level } from "./structure.ts";
 import { levelsFromEntry, roundToTick, type TradeLevels } from "./instrument.ts";
 import { scoreSetup, type ScoreBreakdown } from "./scoring.ts";
+import { asiaRange, prevDayRange } from "./features.ts";
 
 export interface Gate {
   key: "data" | "structure" | "invalidation" | "volatility" | "risk";
@@ -331,6 +332,68 @@ export function detectBreakoutRetest(direction: Direction, pair: TfPair, c: Dete
   return null;
 }
 
+/**
+ * Liquidity sweep: candle konteks menembus high/low hari sebelumnya, range Asia,
+ * atau swing terakhir (mengambil stop), lalu MENUTUP kembali di dalam level.
+ * Setup = retest level yang direbut kembali, searah pembalikan. Invalidasi di
+ * luar ujung sweep. (Riset: aktif di backtest; sinyal live hanya bila terbukti.)
+ */
+export function detectLiquiditySweep(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const cs = c.candles[pair.context] ?? [];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  const s = sgn(direction);
+  const a = ctx.atr;
+  const n = cs.length - 1;
+  const pd = prevDayRange(c.candles.H1 ?? [], c.nowSec);
+  const asia = asiaRange(c.candles.M15 ?? [], c.nowSec);
+  const swingsOpp = ctx.swings.filter((sw) => sw.kind === (direction === "BUY" ? "low" : "high") && sw.index <= n - 3).slice(-3);
+  const refs: { price: number; name: string }[] = [];
+  if (pd) refs.push({ price: direction === "BUY" ? pd.low : pd.high, name: direction === "BUY" ? "low hari sebelumnya" : "high hari sebelumnya" });
+  if (asia) refs.push({ price: direction === "BUY" ? asia.low : asia.high, name: direction === "BUY" ? "low sesi Asia" : "high sesi Asia" });
+  for (const sw of swingsOpp) refs.push({ price: sw.price, name: `swing ${direction === "BUY" ? "low" : "high"}` });
+  for (let k = n; k >= Math.max(1, n - 2); k--) {
+    const bar = cs[k];
+    if (bar.high - bar.low > 3 * a) continue; // candle berita/ekstrem
+    const wick = direction === "BUY" ? bar.low : bar.high;
+    const L = refs.find((r) => s * (r.price - wick) > 0.1 * a && s * (bar.close - r.price) > 0);
+    if (!L) continue;
+    // harga sesudahnya tidak boleh kembali menutup di luar level (sweep gagal)
+    if (cs.slice(k + 1).some((b) => s * (b.close - L.price) < 0)) return null;
+    const zoneLow = direction === "BUY" ? L.price - 0.1 * a : L.price - 0.3 * a;
+    const zoneHigh = direction === "BUY" ? L.price + 0.3 * a : L.price + 0.1 * a;
+    const edge = direction === "BUY" ? zoneHigh : zoneLow;
+    if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+    const invalidation = wick - s * 0.1 * a;
+    if (s * (c.price - invalidation) <= 0) return null;
+    const reasons = [
+      ...c.analysis.reasons,
+      `${pair.context}: candle ${new Date(bar.time * 1000).toISOString().slice(11, 16)} UTC menembus ${L.name} ${L.price.toFixed(2)} (ujung ${wick.toFixed(2)}) lalu menutup kembali ${direction === "BUY" ? "di atasnya" : "di bawahnya"} → likuiditas diambil.`,
+      `Area retest ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi di luar ujung sweep ${invalidation.toFixed(2)}.`,
+    ];
+    return finalize(
+      {
+        strategy: "liquidity_sweep",
+        direction,
+        pair,
+        ctx,
+        conf: c.analysis.tfs[pair.confirm],
+        zoneLow,
+        zoneHigh,
+        invalidation,
+        levelTouches: 2,
+        anchor: `sweep:${L.price.toFixed(2)}@${bar.time}`,
+        confirmCandles: confCandles,
+        confirmAfter: bar.time + TF_SECONDS[pair.context],
+        reasons,
+      },
+      c,
+    );
+  }
+  return null;
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -342,6 +405,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("breakout_retest")) {
         const b = detectBreakoutRetest(dir, pair, c);
         if (b) out.push(b);
+      }
+      if (c.config.strategies.includes("liquidity_sweep")) {
+        const l = detectLiquiditySweep(dir, pair, c);
+        if (l) out.push(l);
       }
     }
   }

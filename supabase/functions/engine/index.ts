@@ -850,10 +850,12 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-18.2"; // .2: varian D–F, blackout news
+const STRATEGY_CODE_VERSION = "2026-10-18.3"; // .3: fitur riset per trade + strategi riset liquidity_sweep
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE = "Binance — PAXG/USDT (proxy emas), jam pasar emas";
+/** strategi yang ikut disimulasikan untuk RISET (tidak tampil di ringkasan/probabilitas live) */
+const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep"];
 
 async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT): Promise<string> {
   const { spec: _spec, ...strategy } = cfg;
@@ -877,6 +879,7 @@ function tradeRow(t: BacktestTrade, version: string, chunkStart: number) {
     tp: t.tp,
     ambiguous: t.ambiguous,
     pips: t.pips,
+    features: t.features ?? null,
   };
 }
 
@@ -916,7 +919,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     bars[tf] = candles[tf]!.length;
   }
 
-  const trades = runBacktestTrades(candles, cfg, o, { fromSec: start, toSec: Math.min(end, nowSec) });
+  const btCfg: EngineConfig = { ...cfg, strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])] };
+  const trades = runBacktestTrades(candles, btCfg, o, { fromSec: start, toSec: Math.min(end, nowSec) });
   await db.from("backtest_trades").delete().eq("version", version).eq("chunk_start", iso(start));
   for (let i = 0; i < trades.length; i += 500) {
     const { error } = await db.from("backtest_trades").insert(trades.slice(i, i + 500).map((t) => tradeRow(t, version, start)));
@@ -925,7 +929,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   await db.from("backtest_chunks").upsert({ chunk_start: iso(start), version, computed_at: iso(nowSec), setups: trades.length, touched: trades.filter((t) => t.entryTouched).length }, { onConflict: "chunk_start,version" });
 
   // ---- ringkas ulang seluruh potongan versi ini ----
-  const all = await loadTrades(db, version);
+  // ringkasan & probabilitas hanya untuk strategi yang aktif di sinyal live
+  const all = (await loadTrades(db, version)).filter((t) => (cfg.strategies as string[]).includes(t.strategy));
   const { count: chunks } = await db.from("backtest_chunks").select("chunk_start", { count: "exact", head: true }).eq("version", version);
   const report = summarizeTrades(all, o);
   if (report) {

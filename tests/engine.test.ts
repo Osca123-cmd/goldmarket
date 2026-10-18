@@ -177,3 +177,24 @@ describe("blackout news FOMC/NFP/CPI/PPI", () => {
     expect(off.created.length).toBe(normal.created.length);
   });
 });
+
+describe("strategi liquidity sweep (riset)", () => {
+  it("terdeteksi pada data demo dengan invalidasi di luar ujung sweep dan level sesuai rencana TF", () => {
+    const cfg = { ...DEFAULT_ENGINE_CONFIG, strategies: ["liquidity_sweep" as const] };
+    const found: SetupCandidate[] = [];
+    for (let t = T0; t < T0 + 5 * 86400 && found.length < 3; t += 900) {
+      found.push(...runEngineCycle(input(t, { config: cfg })).created.filter((c) => c.strategy === "liquidity_sweep"));
+    }
+    expect(found.length).toBeGreaterThan(0);
+    for (const c of found) {
+      const s = c.direction === "BUY" ? 1 : -1;
+      expect(c.reasons.some((r) => r.includes("likuiditas diambil"))).toBe(true);
+      expect(s * (c.entry - c.invalidation)).toBeGreaterThan(0); // invalidasi di sisi SL
+      expect(c.slPips).toBe(planFor(DEFAULT_ENGINE_CONFIG, c.timeframe).slPips);
+    }
+  }, 120_000);
+
+  it("tidak aktif di sinyal live secara default", () => {
+    expect(DEFAULT_ENGINE_CONFIG.strategies).not.toContain("liquidity_sweep");
+  });
+});

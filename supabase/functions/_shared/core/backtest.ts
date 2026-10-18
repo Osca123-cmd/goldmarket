@@ -6,6 +6,7 @@ import { dedupeBatch } from "./setups.ts";
 import { pipsToPrice, priceToPips, roundToTick, type InstrumentSpec } from "./instrument.ts";
 import { sessionAt } from "./sessions.ts";
 import type { EngineConfig } from "./config.ts";
+import { setupFeatures, type SetupFeatures } from "./features.ts";
 
 /**
  * Backtest walk-forward: PROBABILITAS historis (terpisah dari skor kualitas) dan
@@ -97,6 +98,8 @@ export interface SimOutcome {
   ambiguous: boolean;
   /** P/L per varian manajemen (pips, biaya termasuk); null bila entry tidak tersentuh / belum tuntas */
   pips: Record<MgmtVariant, number> | null;
+  /** ciri setup saat dibuat (riset filter) */
+  features?: SetupFeatures;
 }
 
 /** Candle tertutup ≤ t, maksimal `window` bar terakhir. */
@@ -278,6 +281,7 @@ export interface BacktestTrade {
   tp: [boolean | null, boolean | null, boolean | null];
   ambiguous: boolean;
   pips: Record<MgmtVariant, number> | null;
+  features?: SetupFeatures;
 }
 
 export function toTrade(o: SimOutcome): BacktestTrade {
@@ -293,6 +297,7 @@ export function toTrade(o: SimOutcome): BacktestTrade {
     tp: o.tp,
     ambiguous: o.ambiguous,
     pips: o.pips,
+    features: o.features,
   };
 }
 
@@ -333,7 +338,8 @@ export function runBacktestTrades(
       if (confView.length < 3) continue;
       const analysis = analyzeMarket({ nowSec: t, candles: view }, [...new Set([...tfs, pair.context, pair.confirm])]);
       const price = confView[confView.length - 1].close;
-      const cands = dedupeBatch(detectAll({ analysis, candles: view, price, spreadPips: o.spreadPips, nowSec: t, dataTime: t, config: pairCfg }), pairCfg).filter((c) => c.eligible);
+      const dctx = { analysis, candles: view, price, spreadPips: o.spreadPips, nowSec: t, dataTime: t, config: pairCfg };
+      const cands = dedupeBatch(detectAll(dctx), pairCfg).filter((c) => c.eligible);
       for (const c of cands) {
         const dup = recent.some(
           (r) =>
@@ -342,7 +348,7 @@ export function runBacktestTrades(
         );
         if (dup) continue;
         recent.push(c);
-        outcomes.push(simulate(c, conf.filter((b) => b.time >= t), cfg.spec, o));
+        outcomes.push({ ...simulate(c, conf.filter((b) => b.time >= t), cfg.spec, o), features: setupFeatures(c, dctx) });
       }
     }
   }
