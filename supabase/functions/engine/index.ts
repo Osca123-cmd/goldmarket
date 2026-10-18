@@ -82,12 +82,21 @@ async function authorized(db: Db, given: string): Promise<boolean> {
 
 /** Provider: env MARKET_PROVIDER > engine_state.config.provider > td_hybrid (bila key Twelve Data ada) > spot_hybrid. */
 function providerId(stateConfig: Record<string, unknown> | null | undefined): string {
-  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || (env("TWELVEDATA_API_KEY") ? "td_hybrid" : "spot_hybrid");
+  return env("MARKET_PROVIDER") || (stateConfig?.provider as string | undefined) || (tdKey ? "td_hybrid" : "spot_hybrid");
+}
+
+/** API key Twelve Data: secret Edge Function TWELVEDATA_API_KEY, atau Vault 'twelvedata_api_key'. Diisi per request. */
+let tdKey = "";
+async function loadTdKey(db: Db): Promise<string> {
+  const fromEnv = env("TWELVEDATA_API_KEY");
+  if (fromEnv) return fromEnv;
+  const { data, error } = await db.rpc("twelvedata_key_get");
+  return !error && typeof data === "string" ? data.trim() : "";
 }
 
 /** Pesan error aman untuk log/DB: tanpa API key. */
 function scrub(msg: string): string {
-  const key = env("TWELVEDATA_API_KEY");
+  const key = tdKey;
   let m = msg.slice(0, 300);
   if (key) m = m.split(key).join("***");
   return m.replace(/apikey=[^&\s]+/gi, "apikey=***");
@@ -280,7 +289,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     db.from("market_snapshot").select("*").eq("id", "current").maybeSingle(),
     db.from("engine_state").select("*").eq("id", "engine").maybeSingle(),
   ]);
-  const provider = createProvider(pid, { twelveDataKey: env("TWELVEDATA_API_KEY") || undefined, basis: stateRow?.basis ?? null });
+  const provider = createProvider(pid, { twelveDataKey: tdKey || undefined, basis: stateRow?.basis ?? null });
   const state: Record<string, any> = stateRow ?? { id: "engine", last_candle_fetch: {}, backfilled: {} };
   if (state.provider && state.provider !== provider.id) {
     state.backfilled = {};
@@ -970,6 +979,7 @@ Deno.serve(async (req) => {
   const { data: st } = await db.from("engine_state").select("config").eq("id", "engine").maybeSingle();
   const cfg = mergeConfig(st?.config ?? null);
   try {
+    tdKey = mode === "tick" ? await loadTdKey(db) : "";
     const pid = providerId(st?.config);
     const result = mode === "backtest" ? await backtest(db, cfg, pid) : mode === "news" ? await news(db) : await tick(db, cfg, pid);
     await db.from("engine_runs").update({ finished_at: new Date().toISOString(), ok: !("error" in result && result.error), stats: result }).eq("id", run?.id);

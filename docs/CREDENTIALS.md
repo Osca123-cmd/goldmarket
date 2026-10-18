@@ -2,7 +2,7 @@
 
 | Item | Status | Yang perlu dilakukan |
 |---|---|---|
-| Candle XAU/USD asli (Twelve Data) | **Belum** — saat ini `spot_hybrid` (harga XAU spot gold-api.com, candle PAXG/USDT digeser basis) | Daftar paket gratis di twelvedata.com → salin API key → Supabase Dashboard → Edge Functions → Secrets: tambah `TWELVEDATA_API_KEY`. Engine otomatis pindah ke `td_hybrid` (harga tetap gold-api, candle Twelve Data, ≈470 kredit/hari). Jangan set `MARKET_PROVIDER=twelvedata` di paket gratis: quote tiap menit melebihi 800 kredit/hari. Periksa lisensi untuk penggunaan Anda. |
+| Candle XAU/USD asli (Twelve Data) | **Belum** — saat ini `spot_hybrid` (harga XAU spot gold-api.com, candle PAXG/USDT digeser basis) | Daftar paket gratis di twelvedata.com → salin API key → Supabase Dashboard → Edge Functions → Secrets: tambah `TWELVEDATA_API_KEY` (atau simpan di Vault: `select vault.create_secret('<key>', 'twelvedata_api_key')`). Engine otomatis pindah ke `td_hybrid` (harga tetap gold-api, candle Twelve Data, ≈470 kredit/hari). Jangan set `MARKET_PROVIDER=twelvedata` di paket gratis: quote tiap menit melebihi 800 kredit/hari. Periksa lisensi untuk penggunaan Anda. |
 | Hosting frontend | Build siap (`out/`) | Hubungkan repo ke Vercel/Netlify/Cloudflare Pages (lihat `DEPLOYMENT.md`) — membutuhkan login akun hosting Anda. |
 | Auth Site URL & Redirect URLs | Default `localhost` | Supabase → Authentication → URL Configuration: isi URL hosting, tambahkan `/login/` & `/reset-password/`. Wajib agar tautan konfirmasi email & reset password mengarah ke situs. |
 | SMTP email | SMTP bawaan Supabase (terbatas) | Pasang SMTP (Resend, Postmark, dll.) untuk produksi. |
