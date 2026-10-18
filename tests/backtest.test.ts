@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_SEC, DEFAULT_BT, chunkStartOf, nextChunk, pickVariant, runBacktest, simulate, summarizeTrades, variantStats, wilson, type BacktestTrade } from "../src/core/backtest.ts";
+import { CHUNK_SEC, DEFAULT_BT, chunkStartOf, expectedChunks, nextChunk, pickVariant, runBacktest, simulate, summarizeTrades, variantStats, wilson, type BacktestTrade } from "../src/core/backtest.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
 import { DEFAULT_ENGINE_CONFIG } from "../src/core/config.ts";
 import type { SetupCandidate } from "../src/core/strategies.ts";
@@ -127,6 +127,15 @@ describe("ringkasan ekspektasi & penjadwalan potongan", () => {
     const all = [];
     for (let st = cur; st >= cur - 60 * CHUNK_SEC; st -= CHUNK_SEC) all.push({ start: st, computedAt: st === cur ? now : st + CHUNK_SEC + 2 * 86400 });
     expect(nextChunk(all, now, 12)).toBeNull();
+  });
+  it("expectedChunks = jumlah potongan yang dijelajahi nextChunk", () => {
+    const now = Date.parse("2026-10-17T22:00:00Z") / 1000;
+    const n = expectedChunks(now, 12);
+    const cur = chunkStartOf(now);
+    const done = [];
+    for (let i = 0; i < n; i++) done.push({ start: cur - i * CHUNK_SEC, computedAt: i === 0 ? now : cur - i * CHUNK_SEC + CHUNK_SEC + 2 * 86400 });
+    expect(nextChunk(done, now, 12)).toBeNull();
+    expect(nextChunk(done.slice(0, n - 1), now, 12)).toBe(cur - (n - 1) * CHUNK_SEC);
   });
 });
 

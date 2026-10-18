@@ -152,7 +152,7 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 
 **Jam pasar emas.** PAXG diperdagangkan 24/7, sedangkan emas tutup di akhir pekan (Jumat 17:00 – Minggu 18:00 New York) dan jeda harian 17:00–18:00 New York. Bar di luar jam itu bukan harga emas, jadi `marketHoursOnly()` membuangnya sebelum disimpan dan sebelum backtest. Bar lama yang sempat tersimpan dibersihkan sekali oleh engine (`engine_state.maintenance.offhours_purged_v1`).
 
-**Sumber candle live.** Bila `TWELVEDATA_API_KEY` diset, analisis live memakai candle XAU/USD Twelve Data (`td_hybrid`); tanpa key, candle PAXG digeser basis (`spot_hybrid`). Backtest tetap memakai riwayat PAXG Binance (gratis, 12 bulan), jadi angka backtest adalah perkiraan untuk XAU/USD, bukan hasil di data yang sama persis.
+**Sumber candle live.** Bila `TWELVEDATA_API_KEY` diset, analisis live memakai candle XAU/USD Twelve Data (`td_hybrid`); tanpa key, candle PAXG digeser basis (`spot_hybrid`). Backtest memakai riwayat XAU/USD Twelve Data bila key ada (4 kredit per potongan, dijadwalkan menit :07 dan :37 agar kuota gratis cukup), selain itu PAXG Binance. Sumber data ikut menentukan versi strategi; laporan dan probabilitas versi lama tetap tampil sampai semua potongan versi baru lengkap.
 
 **Backtest bertahap.**
 - Mode engine `backtest` berjalan tiap 10 menit dan menghitung satu potongan 7 hari (mulai Senin 00:00 UTC). Potongan diambil dari terbaru ke terlama sampai ±12 bulan (`BACKTEST_MONTHS`).

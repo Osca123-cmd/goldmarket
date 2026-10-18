@@ -91,8 +91,10 @@ export function twelveData(apiKey: string, fetchFn: Fetch = fetch): MarketProvid
     async fetchQuote() {
       return parseTwelveDataQuote(await getJson(fetchFn, `${base}/quote?symbol=${sym}&timezone=UTC&apikey=${apiKey}`, apiKey));
     },
-    async fetchCandles(tf, limit) {
-      const url = `${base}/time_series?symbol=${sym}&interval=${TD_INTERVAL[tf]}&outputsize=${Math.min(limit, 5000)}&timezone=UTC&order=ASC&apikey=${apiKey}`;
+    async fetchCandles(tf, limit, endSec) {
+      // end_date (inklusif, UTC) untuk riwayat backtest; tanpa endSec = bar terbaru
+      const end = endSec ? `&end_date=${encodeURIComponent(new Date(endSec * 1000).toISOString().slice(0, 19).replace("T", " "))}` : "";
+      const url = `${base}/time_series?symbol=${sym}&interval=${TD_INTERVAL[tf]}&outputsize=${Math.min(limit, 5000)}&timezone=UTC&order=ASC${end}&apikey=${apiKey}`;
       return parseTwelveDataSeries(await getJson(fetchFn, url, apiKey));
     },
   };

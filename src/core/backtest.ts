@@ -530,6 +530,12 @@ export function nextChunk(
   return null;
 }
 
+/** Jumlah potongan yang dijelajahi nextChunk untuk periode ini — versi dianggap lengkap bila semuanya ada. */
+export function expectedChunks(nowSec: number, months = 12): number {
+  const oldest = chunkStartOf(nowSec - months * 30.44 * 86400);
+  return Math.floor((chunkStartOf(nowSec) - oldest) / CHUNK_SEC) + 1;
+}
+
 // ---------------------------------------------------------------------------
 // Pemilihan varian yang jujur: dipilih dari data PENGEMBANGAN, dibuktikan di data UJI
 // ---------------------------------------------------------------------------

@@ -46,6 +46,7 @@ describe("provider", () => {
     expect(c[0].close).toBe(4166.4);
     expect(calls.filter((u) => u.includes("twelvedata"))).toHaveLength(1);
     expect(calls.some((u) => u.includes("twelvedata.com/quote"))).toBe(false);
+    expect(calls.find((u) => u.includes("twelvedata"))).toContain("end_date=2026-10-14%2009%3A00%3A00");
     expect(usesTwelveDataCandles("td_hybrid")).toBe(true);
     expect(usesTwelveDataCandles("spot_hybrid")).toBe(false);
     expect(() => createProvider("td_hybrid", {})).toThrow(/TWELVEDATA_API_KEY/);

@@ -19,6 +19,7 @@ import {
   probabilityReports,
   summarizeTrades,
   nextChunk,
+  expectedChunks,
   CHUNK_SEC,
   type BacktestTrade,
   runEngineCycle,
@@ -880,22 +881,26 @@ async function news(db: Db) {
 
 // ---------------------------------------------------------------------------
 // Backtest panjang bertahap: satu potongan 7 hari per pemanggilan (batas CPU
-// Edge), data riwayat Binance PAXG/USDT, hanya jam pasar emas. Hasil per trade
-// disimpan, lalu diringkas ulang: probabilitas (Live Opportunities) + laporan
-// manajemen posisi A/B/C (Statistik → Backtest).
+// Edge), data riwayat XAU/USD Twelve Data (bila key ada; 4 kredit/potongan) atau
+// Binance PAXG/USDT, hanya jam pasar emas. Hasil per trade disimpan, lalu
+// diringkas ulang: probabilitas (Live Opportunities) + laporan manajemen posisi
+// (Statistik → Backtest) — hanya setelah semua potongan versi ini lengkap.
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-18.3"; // .3: fitur riset per trade + strategi riset liquidity_sweep
+const STRATEGY_CODE_VERSION = "2026-10-22.1"; // .1: riwayat XAU/USD Twelve Data (sumber ikut hash)
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
-const BT_SOURCE = "Binance — PAXG/USDT (proxy emas), jam pasar emas";
+const BT_SOURCE_LABEL: Record<string, string> = {
+  twelvedata: "Twelve Data — XAU/USD, jam pasar emas",
+  binance_paxg: "Binance — PAXG/USDT (proxy emas), jam pasar emas",
+};
 /** strategi yang ikut disimulasikan untuk RISET (tidak tampil di ringkasan/probabilitas live) */
 const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep"];
 
-async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT): Promise<string> {
+async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT, source: string): Promise<string> {
   const { spec: _spec, ...strategy } = cfg;
-  const bytes = new TextEncoder().encode(JSON.stringify({ code: STRATEGY_CODE_VERSION, strategy, o }));
+  const bytes = new TextEncoder().encode(JSON.stringify({ code: STRATEGY_CODE_VERSION, source, strategy, o }));
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(hash.slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -934,7 +939,9 @@ async function loadTrades(db: Db, version: string): Promise<BacktestTrade[]> {
 
 async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   const o = { ...DEFAULT_BT, spreadPips: ASSUMED_SPREAD_PIPS, window: 220 };
-  const version = await strategyVersion(cfg, o);
+  const hist = tdKey ? createProvider("twelvedata", { twelveDataKey: tdKey }) : createProvider("binance_paxg", {});
+  const BT_SOURCE = BT_SOURCE_LABEL[hist.id];
+  const version = await strategyVersion(cfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);
   const { data: doneRows, error: dErr } = await db.from("backtest_chunks").select("chunk_start,computed_at").eq("version", version);
   if (dErr) throw new Error(`chunks: ${dErr.message}`);
@@ -944,13 +951,12 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   // ---- data riwayat potongan ini (+ pemanasan, + 1 hari masa simulasi) ----
   const end = start + CHUNK_SEC;
   const simEnd = Math.min(end + 86400 + 3600, nowSec);
-  const paxg = createProvider("binance_paxg", {});
   const candles: Partial<Record<Timeframe, Candle[]>> = {};
   const bars: Record<string, number> = {};
   for (const tf of ["H4", "H1", "M15", "M5"] as Timeframe[]) {
     const from = start - (BT_WARMUP_DAYS[tf] ?? 5) * 86400;
     const count = Math.ceil((simEnd - from) / TF_SECONDS[tf]) + 2;
-    const raw = await paxg.fetchCandles(tf, count, simEnd);
+    const raw = await hist.fetchCandles(tf, count, simEnd);
     candles[tf] = marketHoursOnly(raw.filter((c) => c.time >= from), tf);
     bars[tf] = candles[tf]!.length;
   }
@@ -968,6 +974,9 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   // ringkasan & probabilitas hanya untuk strategi yang aktif di sinyal live
   const all = (await loadTrades(db, version)).filter((t) => (cfg.strategies as string[]).includes(t.strategy));
   const { count: chunks } = await db.from("backtest_chunks").select("chunk_start", { count: "exact", head: true }).eq("version", version);
+  // versi baru belum lengkap → laporan & probabilitas versi lama tetap tampil (tidak diganti sampel kecil)
+  const complete = (chunks ?? 0) >= expectedChunks(nowSec, BT_MONTHS);
+  if (!complete) return { version, source: hist.id, chunk: iso(start), bars, setups: trades.length, touched: trades.filter((t) => t.entryTouched).length, chunks, complete };
   const report = summarizeTrades(all, o);
   if (report) {
     await db.from("strategy_report").upsert({ id: "current", version, computed_at: iso(nowSec), source: BT_SOURCE, chunks: chunks ?? 0, report });
@@ -989,7 +998,7 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   await db.from("backtest_trades").delete().neq("version", version);
   await db.from("backtest_chunks").delete().neq("version", version);
 
-  return { version, chunk: iso(start), bars, setups: trades.length, touched: trades.filter((t) => t.entryTouched).length, totalTrades: all.length, chunks };
+  return { version, source: hist.id, chunk: iso(start), bars, setups: trades.length, touched: trades.filter((t) => t.entryTouched).length, totalTrades: all.length, chunks, complete };
 }
 
 Deno.serve(async (req) => {
@@ -1004,7 +1013,7 @@ Deno.serve(async (req) => {
   const { data: st } = await db.from("engine_state").select("config").eq("id", "engine").maybeSingle();
   const cfg = mergeConfig(st?.config ?? null);
   try {
-    tdKey = mode === "tick" ? await loadTdKey(db) : "";
+    tdKey = mode === "news" ? "" : await loadTdKey(db);
     const pid = providerId(st?.config);
     const result = mode === "backtest" ? await backtest(db, cfg, pid) : mode === "news" ? await news(db) : await tick(db, cfg, pid);
     await db.from("engine_runs").update({ finished_at: new Date().toISOString(), ok: !("error" in result && result.error), stats: result }).eq("id", run?.id);
