@@ -294,6 +294,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   if (state.provider && state.provider !== provider.id) {
     state.backfilled = {};
     state.last_candle_fetch = {};
+    state.candle_failures = 0;
+    state.candle_retry_at = null;
   }
   const prevStatus = (snap?.feed_status ?? null) as FeedStatus | null;
   let failures = snap?.source === provider.id ? (snap?.consecutive_failures ?? 0) : 0;
@@ -317,10 +319,6 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       fetchInfo.purged_offhours = await purgeOffHours(db, provider.id);
       state.maintenance = { ...maint, offhours_purged_v1: provider.id };
     }
-    const r = await refreshCandles(db, provider, state, t0);
-    state.last_candle_fetch = r.lastFetch;
-    state.backfilled = r.backfilled;
-    fetchInfo = { ...fetchInfo, ...r.fetched };
     failures = 0;
   } catch (e) {
     failures += 1;
@@ -340,6 +338,32 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       last_error: lastError,
       updated_at: new Date().toISOString(),
     });
+  }
+
+  // Candle terpisah dari quote: candle gagal tidak menghentikan harga. Sinyal baru tetap
+  // tertahan oleh gate kualitas bila candle tertinggal (validateData). Backoff sendiri agar kredit tidak terbuang.
+  let candleError: string | null = null;
+  if (failures === 0) {
+    const retryAt = sec(state.candle_retry_at) ?? 0;
+    if (t0 < retryAt) {
+      candleError = snap?.last_error?.startsWith("Candle") ? snap.last_error : `Candle ditunda hingga ${iso(retryAt)}.`;
+    } else {
+      try {
+        const r = await refreshCandles(db, provider, state, t0);
+        state.last_candle_fetch = r.lastFetch;
+        state.backfilled = r.backfilled;
+        fetchInfo = { ...fetchInfo, ...r.fetched };
+        state.candle_failures = 0;
+        state.candle_retry_at = null;
+      } catch (e) {
+        const n = (state.candle_failures ?? 0) + 1;
+        const rateLimited = e instanceof ProviderError && e.rateLimited;
+        state.candle_failures = n;
+        state.candle_retry_at = iso(t0 + backoffSeconds(n + (rateLimited ? 2 : 0), 60, 1800));
+        candleError = `Candle gagal diambil (percobaan ${n}): ${scrub((e as Error).message)}`;
+        console.error("candles", candleError);
+      }
+    }
   }
 
   const quoteTime = quote ? quote.time : sec(snap?.quote_time);
@@ -378,7 +402,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       market_open: marketOpen,
       consecutive_failures: 0,
       next_retry_at: null,
-      last_error: null,
+      last_error: candleError,
       updated_at: new Date().toISOString(),
     });
   }
@@ -586,6 +610,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     notifications: notifRows.length,
     fetched: fetchInfo,
     error: lastError,
+    candle_error: candleError,
   };
 }
 
