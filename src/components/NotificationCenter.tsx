@@ -72,14 +72,11 @@ export function NotificationCenter() {
       .then(({ data }) => (data ?? []).forEach((r) => nearDone.current.add(r.dedupe_key)));
   }, [session]);
 
+  // READY dikirim untuk setiap setup yang dilacak engine (skor tertulis di isi notif), agar urutan
+  // READY → entry tersentuh → TP/BE → hasil selalu lengkap; skor minimum hanya menyaring daftar peluang
   const allowed = useMemo(() => {
     const kinds = settings?.notify_kinds ?? {};
-    const minScore = settings?.min_score ?? {};
-    return (n: { kind: string; score: number | null; timeframe: string | null }) => {
-      if (kinds[n.kind] === false) return false;
-      if (n.kind === "new_setup" && n.score != null && n.timeframe && n.score < (minScore[n.timeframe] ?? 60)) return false;
-      return true;
-    };
+    return (n: { kind: string }) => kinds[n.kind] !== false;
   }, [settings]);
 
   // toast untuk notifikasi engine baru
@@ -103,7 +100,6 @@ export function NotificationCenter() {
     const cooldownKey = "gm:near:last";
     for (const s of setups) {
       if (!s.eligible || s.status !== "approaching") continue;
-      if (s.score < (settings.min_score?.[s.timeframe] ?? 60)) continue;
       const dist = priceToPips(Math.abs(snapshot.price - s.entry_price), { symbol: "", pipSize: settings.pip_size, tickSize: settings.tick_size, digits: settings.digits, contractSize: settings.contract_size, quoteCurrency: "USD" });
       if (dist > settings.near_entry_pips) continue;
       const key = `near:${s.id}`;
@@ -142,7 +138,7 @@ export function NotificationCenter() {
           {unread > 0 && <span className="num absolute -right-1 -top-1 rounded-full bg-gold px-1.5 text-[10px] font-bold text-bg">{unread > 99 ? "99+" : unread}</span>}
         </button>
         {open && (
-          <div className="card absolute right-0 z-40 mt-2 max-h-[70vh] w-[min(92vw,380px)] overflow-y-auto p-3 shadow-2xl">
+          <div className="absolute right-0 z-40 mt-2 max-h-[70vh] w-[min(92vw,380px)] overflow-y-auto rounded-2xl border border-line/80 bg-surface p-3 shadow-2xl">
             <div className="mb-2 flex items-center justify-between">
               <span className="card-title">Notifikasi</span>
               <button className="text-xs text-gold hover:underline" onClick={markAllRead}>
@@ -167,7 +163,7 @@ export function NotificationCenter() {
       </div>
       <div className="pointer-events-none fixed inset-x-3 bottom-20 z-50 flex flex-col items-end gap-2 lg:bottom-4" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.key} className={cx("card pointer-events-auto w-full max-w-sm border-l-4 p-3 shadow-2xl", SEV[t.severity])}>
+          <div key={t.key} className={cx("pointer-events-auto w-full max-w-sm rounded-2xl border border-l-4 bg-surface p-3 shadow-2xl", SEV[t.severity])}>
             <div className="text-sm font-semibold">{t.title}</div>
             <div className="text-xs text-muted">{t.body}</div>
           </div>

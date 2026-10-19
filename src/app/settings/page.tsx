@@ -51,6 +51,7 @@ const schema = z
     news_alert_minutes: z.number().int().min(5).max(240),
     notify_cooldown_min: z.number().int().min(0).max(1440),
     min_score_m15: z.number().int().min(0).max(100),
+    min_score_m30: z.number().int().min(0).max(100),
     min_score_h1: z.number().int().min(0).max(100),
   })
   .refine((s) => s.min_lot <= s.max_lot, { message: "Lot minimum harus ≤ lot maksimum" });
@@ -79,6 +80,7 @@ function SettingsPage() {
     const out: Record<string, string> = {};
     for (const k of Object.keys(DEFAULT_SETTINGS)) if (typeof s[k] !== "object" || s[k] === null) out[k] = s[k] == null ? "" : String(s[k]);
     out.min_score_m15 = String(settings.min_score?.M15 ?? 60);
+    out.min_score_m30 = String(settings.min_score?.M30 ?? 60);
     out.min_score_h1 = String(settings.min_score?.H1 ?? 60);
     setF(out);
     setKinds({ ...DEFAULT_SETTINGS.notify_kinds, ...settings.notify_kinds });
@@ -114,14 +116,15 @@ function SettingsPage() {
       news_alert_minutes: n("news_alert_minutes"),
       notify_cooldown_min: n("notify_cooldown_min"),
       min_score_m15: n("min_score_m15"),
+      min_score_m30: n("min_score_m30"),
       min_score_h1: n("min_score_h1"),
     });
     if (!parsed.success) return setMsg({ ok: false, text: `${parsed.error.issues[0].path.join(".")}: ${parsed.error.issues[0].message}` });
-    const { min_score_m15, min_score_h1, ...rest } = parsed.data;
+    const { min_score_m15, min_score_m30, min_score_h1, ...rest } = parsed.data;
     setBusy(true);
     const { error } = await supabase()
       .from("user_settings")
-      .update({ ...rest, min_score: { M15: min_score_m15, H1: min_score_h1 }, notify_kinds: kinds })
+      .update({ ...rest, min_score: { M15: min_score_m15, M30: min_score_m30, H1: min_score_h1 }, notify_kinds: kinds })
       .eq("user_id", session!.user.id);
     setBusy(false);
     if (error) return setMsg({ ok: false, text: friendlyError(error) });
@@ -194,8 +197,9 @@ function SettingsPage() {
           {inp("near_entry_pips", "Ambang mendekati entry (pips)")}
           {inp("news_alert_minutes", "Peringatan FOMC/NFP/CPI/PPI (menit sebelum)", "5–240 menit")}
           {inp("notify_cooldown_min", "Cooldown peringatan (menit)")}
-          {inp("min_score_m15", "Skor minimum M15")}
-          {inp("min_score_h1", "Skor minimum H1")}
+          {inp("min_score_m15", "Skor minimum M15", "Menyaring daftar peluang, bukan notifikasi")}
+          {inp("min_score_m30", "Skor minimum M30", "Menyaring daftar peluang, bukan notifikasi")}
+          {inp("min_score_h1", "Skor minimum H1", "Menyaring daftar peluang, bukan notifikasi")}
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {KINDS.map(([k, l]) => (

@@ -236,6 +236,17 @@ for (const vp of viewports) {
         await page.screenshot({ path: join(OUT, `${vp.name}-signal-history-open.png`) });
       }
     }
+    if (p === "/") {
+      // panel lonceng harus berlatar solid (konten halaman tidak tembus)
+      await page.getByRole("button", { name: /Notifikasi/ }).first().click();
+      await page.waitForTimeout(300);
+      const panelBg = await page.evaluate(() => {
+        const el = [...document.querySelectorAll("span")].find((s) => s.textContent === "Notifikasi")?.closest("div.absolute");
+        return el ? getComputedStyle(el).backgroundColor : null;
+      });
+      if (!panelBg || !/^rgb\(/.test(panelBg)) problems.push(`${vp.name} ${p}: panel notifikasi tidak berlatar solid (${panelBg})`);
+      await page.screenshot({ path: join(OUT, `${vp.name}-notifications-open.png`) });
+    }
     await page.close();
   }
   await ctx.close();

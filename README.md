@@ -19,7 +19,7 @@ Website analisis XAUUSD yang berfungsi nyata: data pasar → validasi data → a
 | Kalkulator Risiko | Risiko nominal, jarak SL (pips), lot (dibulatkan ke bawah per lot step), nilai pip per lot dari spesifikasi broker + kurs, profit tiap TP, RR sebelum/sesudah biaya |
 | Jurnal Trading | Catat manual / dari setup; entry aktual, lot, SL, TP, waktu, biaya; milestone TP terpisah dari status akhir; partial close; tutup TP1/TP2/TP3/SL/BE/manual/cancelled dengan konfirmasi; pindah SL ke BE; catatan; screenshot (≤ 5 MB, PNG/JPEG/WEBP); histori perubahan otomatis (trigger DB) |
 | Statistik | Win rate, net P/L, profit factor, avg win/loss, R-multiple, drawdown, per strategi/sesi/TF, kalender, kurva ekuitas, ekspor CSV, penjelasan metode |
-| Pengaturan | Pip/tick/desimal/contract size, lot step/min/max, komisi, mata uang & kurs, risiko, ambang notifikasi (default 20 pips), cooldown, skor minimum per TF, jenis notifikasi, browser push, zona waktu |
+| Pengaturan | Pip/tick/desimal/contract size, lot step/min/max, komisi, mata uang & kurs, risiko, ambang notifikasi (default 20 pips), cooldown, skor minimum per TF (daftar peluang), jenis notifikasi, browser push, zona waktu |
 
 ## Arsitektur
 

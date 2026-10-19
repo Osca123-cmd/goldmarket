@@ -688,7 +688,6 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
     const kinds = p?.notify_kinds ?? {};
     for (const n of fresh) {
       if (kinds[n.kind] === false || n.kind === "news_event") continue; // news_event: ambang menit per pengguna di bawah
-      if (n.kind === "new_setup" && n.score != null && n.timeframe && n.score < (p?.min_score?.[n.timeframe] ?? 60)) continue;
       queue.push({ userId: uid, payload: { title: n.title, body: n.body, tag: `${n.kind}:${n.setup_id ?? ""}`, url: APP_URL + (n.setup_id ? "opportunities/" : "") } });
     }
   }
@@ -707,7 +706,6 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
       const p = prefs.get(uid);
       if (!p || p.notify_kinds?.near_entry === false) continue;
       for (const s of near ?? []) {
-        if (s.score < (p.min_score?.[s.timeframe] ?? 60)) continue;
         const dist = Math.abs(price - s.entry_price) / (p.pip_size || cfg.spec.pipSize);
         if (dist > p.near_entry_pips) continue;
         const { error } = await db.from("user_alerts").insert({ user_id: uid, dedupe_key: `near:${s.id}` });
