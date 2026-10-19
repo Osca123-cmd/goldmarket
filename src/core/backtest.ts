@@ -5,7 +5,7 @@ import { detectAll, type SetupCandidate } from "./strategies.ts";
 import { dedupeBatch } from "./setups.ts";
 import { pipsToPrice, priceToPips, roundToTick, type InstrumentSpec } from "./instrument.ts";
 import { sessionAt } from "./sessions.ts";
-import type { EngineConfig } from "./config.ts";
+import { analysisTfs, type EngineConfig } from "./config.ts";
 import { setupFeatures, type SetupFeatures } from "./features.ts";
 
 /**
@@ -322,7 +322,7 @@ export function runBacktestTrades(
   range: { fromSec?: number; toSec?: number } = {},
 ): BacktestTrade[] {
   const outcomes: SimOutcome[] = [];
-  const tfs: Timeframe[] = ["H4", "H1", "M15", "M5"];
+  const tfs: Timeframe[] = analysisTfs(cfg);
   for (const pair of cfg.pairs) {
     const ctx = candles[pair.context] ?? [];
     const conf = candles[pair.confirm] ?? [];
@@ -336,7 +336,7 @@ export function runBacktestTrades(
       for (const tf of new Set([...tfs, pair.context, pair.confirm])) view[tf] = sliceClosed(candles[tf] ?? [], tf, t, o.window);
       const confView = view[pair.confirm]!;
       if (confView.length < 3) continue;
-      const analysis = analyzeMarket({ nowSec: t, candles: view }, [...new Set([...tfs, pair.context, pair.confirm])]);
+      const analysis = analyzeMarket({ nowSec: t, candles: view }, tfs, cfg.biasTfs);
       const price = confView[confView.length - 1].close;
       const dctx = { analysis, candles: view, price, spreadPips: o.spreadPips, nowSec: t, dataTime: t, config: pairCfg };
       const cands = dedupeBatch(detectAll(dctx), pairCfg).filter((c) => c.eligible);

@@ -26,8 +26,8 @@ const ctx = (): DetectContext => ({
   analysis: {
     asOf: NOW, mainBias: "bullish", strongBias: true, reasons: [],
     tfs: {
-      H4: { bias: "bullish", ema200: 4000, lastClose: 4105, ema50SlopeAtr: 0.8 },
-      H1: { bias: "bullish", atr: 10 },
+      H1: { bias: "bullish", ema200: 4000, lastClose: 4105, ema50SlopeAtr: 0.8, atr: 10 },
+      M30: { bias: "bullish" },
       M15: { bias: "ranging", atr: 5, rsi: 60 },
     },
   } as never,
@@ -40,7 +40,7 @@ const ctx = (): DetectContext => ({
 });
 
 describe("setupFeatures", () => {
-  it("BUY: searah H4, ruang ke high kemarin, posisi vs range Asia, angka bulat", () => {
+  it("BUY: searah TF bias besar (H1), ruang ke high kemarin, posisi vs range Asia, angka bulat", () => {
     const f = setupFeatures(setup("BUY", 4104), ctx());
     expect(f.alignH4).toBe(1);
     expect(f.ema200H4).toBe(1);

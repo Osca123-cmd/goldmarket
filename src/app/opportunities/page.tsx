@@ -129,7 +129,7 @@ function Watching({ analysis, snapshot, pipSize }: { analysis: AnalysisRow | nul
           <span className="text-2xl font-extrabold text-muted">◆ NETRAL</span>
         )}
         <span className="text-sm text-muted">
-          {analysis ? (dir ? `tren MTF ${analysis.strong_bias ? "searah (H4+H1)" : "moderat (H1)"}` : "pasar ranging · menunggu arah") : "menunggu analisis"}
+          {analysis ? (dir ? `tren MTF ${analysis.strong_bias ? "searah (H1+M30)" : "moderat (M30)"}` : "pasar ranging · menunggu arah") : "menunggu analisis"}
         </span>
       </div>
       <p className="mt-1 text-xs text-muted">
@@ -230,7 +230,7 @@ function LiveSignal() {
             <LiveIcon active={mon.active} />
             <h2 className="mt-3 text-xl font-bold">{title}</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-muted">
-              Sistem memantau chart <span className="font-semibold text-gold">H4, H1, M15 &amp; M5</span> secara terus-menerus.
+              Sistem memantau chart <span className="font-semibold text-gold">H1, M30 &amp; M15</span> secara terus-menerus.
               <br className="hidden sm:inline" /> Sinyal muncul otomatis saat setup valid terbentuk — tanpa sinyal paksaan.
             </p>
             <div className="mt-5">
@@ -258,8 +258,8 @@ function LiveSignal() {
                     <li key={i}>• {r}</li>
                   ))}
                 </ul>
-                <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
-                  {(["H4", "H1", "M15", "M5"] as const).map((tf) => (
+                <div className="mt-2 grid grid-cols-3 gap-1">
+                  {(["H1", "M30", "M15"] as const).map((tf) => (
                     <span key={tf} className="rounded-lg bg-surface px-2 py-1">
                       <strong>{tf}</strong> <span className={analysis.timeframes[tf]?.bias === "bullish" ? "text-buy" : analysis.timeframes[tf]?.bias === "bearish" ? "text-sell" : "text-muted"}>{analysis.timeframes[tf]?.bias ?? "—"}</span>
                     </span>

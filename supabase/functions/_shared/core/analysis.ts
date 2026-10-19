@@ -88,41 +88,47 @@ export interface MultiTfAnalysis {
   asOf: number;
   tfs: Partial<Record<Timeframe, TfAnalysis>>;
   mainBias: MarketBias;
-  /** H4 searah dengan H1 */
+  /** TF besar searah dengan TF pendukung */
   strongBias: boolean;
   reasons: string[];
 }
 
 /**
- * Bias utama dari H4 + H1:
+ * Bias utama dari TF besar (major) + TF pendukung (minor), default H1 + M30:
  *  - keduanya searah → bias kuat
- *  - H1 berarah, H4 ranging → bias moderat searah H1
- *  - selain itu (konflik / H1 ranging) → ranging
+ *  - minor berarah, major ranging → bias moderat searah minor
+ *  - selain itu (konflik / minor ranging) → ranging
  */
-export function analyzeMarket(view: MarketView, tfs: Timeframe[] = ["H4", "H1", "M15", "M5"]): MultiTfAnalysis {
+export function analyzeMarket(
+  view: MarketView,
+  tfs: Timeframe[] = ["H1", "M30", "M15"],
+  bias: { major: Timeframe; minor: Timeframe } = { major: "H1", minor: "M30" },
+): MultiTfAnalysis {
   const out: Partial<Record<Timeframe, TfAnalysis>> = {};
-  for (const tf of tfs) {
+  for (const tf of new Set([...tfs, bias.major, bias.minor])) {
     const a = analyzeTimeframe(tf, view.candles[tf] ?? []);
     if (a) out[tf] = a;
   }
-  const h4 = out.H4?.bias;
-  const h1 = out.H1?.bias;
+  const M = bias.major;
+  const m = bias.minor;
+  const big = out[M]?.bias;
+  const small = out[m]?.bias;
   const reasons: string[] = [];
   let mainBias: MarketBias = "ranging";
   let strong = false;
-  if (!h4 || !h1) {
-    reasons.push("Data H4/H1 belum cukup untuk menentukan bias utama.");
-  } else if (h1 !== "ranging" && h4 === h1) {
-    mainBias = h1;
+  if (!big || !small) {
+    reasons.push(`Data ${M}/${m} belum cukup untuk menentukan bias utama.`);
+  } else if (small !== "ranging" && big === small) {
+    mainBias = small;
     strong = true;
-    reasons.push(`Bias utama ${h1 === "bullish" ? "bullish" : "bearish"}: H4 dan H1 searah.`);
-  } else if (h1 !== "ranging" && h4 === "ranging") {
-    mainBias = h1;
-    reasons.push(`Bias utama ${h1} (moderat): H1 berarah, H4 masih ranging.`);
-  } else if (h1 !== "ranging" && h4 !== "ranging" && h1 !== h4) {
-    reasons.push(`Konflik: H4 ${h4}, H1 ${h1} → diperlakukan ranging.`);
+    reasons.push(`Bias utama ${small === "bullish" ? "bullish" : "bearish"}: ${M} dan ${m} searah.`);
+  } else if (small !== "ranging" && big === "ranging") {
+    mainBias = small;
+    reasons.push(`Bias utama ${small} (moderat): ${m} berarah, ${M} masih ranging.`);
+  } else if (small !== "ranging" && big !== "ranging" && small !== big) {
+    reasons.push(`Konflik: ${M} ${big}, ${m} ${small} → diperlakukan ranging.`);
   } else {
-    reasons.push(`H1 ranging${h4 !== "ranging" ? `, H4 ${h4}` : ""} → belum ada bias utama.`);
+    reasons.push(`${m} ranging${big !== "ranging" ? `, ${M} ${big}` : ""} → belum ada bias utama.`);
   }
   return { asOf: view.nowSec, tfs: out, mainBias, strongBias: strong, reasons };
 }

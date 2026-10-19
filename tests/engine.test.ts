@@ -94,7 +94,7 @@ describe("engine: validasi data → analisis → setup", () => {
   it("koneksi bermasalah atau candle hilang menghentikan sinyal baru", () => {
     expect(runEngineCycle(input(T0, { feedStatus: "reconnecting" })).created).toHaveLength(0);
     const raw = demoView(T0);
-    raw.M5 = raw.M5!.filter((_, i, arr) => i !== arr.length - 5); // hapus satu candle M5
+    raw.M15 = raw.M15!.filter((_, i, arr) => i !== arr.length - 5); // hapus satu candle M15 (TF konfirmasi)
     const gap = runEngineCycle(input(T0, { rawCandles: raw }));
     expect(gap.quality.reasons.join(" ")).toMatch(/hilang/);
     expect(gap.created).toHaveLength(0);
@@ -220,12 +220,12 @@ describe("gate SL vs invalidasi + toleransi", () => {
 });
 
 describe("strategi supply/demand reversal (riset)", () => {
-  it("hanya muncul saat H4 ranging; boleh melawan bias H1; invalidasi di sisi SL; level sesuai rencana TF", () => {
+  it("hanya muncul saat TF bias besar (H1) ranging; boleh melawan bias M30; invalidasi di sisi SL; level sesuai rencana TF", () => {
     const cfg = { ...DEFAULT_ENGINE_CONFIG, strategies: ["sd_reversal" as const] };
     const found: { c: SetupCandidate; h4: string }[] = [];
     for (let t = T0; t < T0 + 10 * 86400 && found.length < 5; t += 900) {
       const out = runEngineCycle(input(t, { config: cfg }));
-      for (const c of out.created) found.push({ c, h4: out.analysis.tfs.H4?.bias ?? "" });
+      for (const c of out.created) found.push({ c, h4: out.analysis.tfs[DEFAULT_ENGINE_CONFIG.biasTfs.major]?.bias ?? "" });
     }
     expect(found.length).toBeGreaterThan(0);
     for (const { c, h4 } of found) {

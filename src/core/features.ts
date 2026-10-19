@@ -85,13 +85,14 @@ export function setupFeatures(s: SetupCandidate, c: DetectContext): SetupFeature
   const a = c.analysis.tfs;
   const ctx = a[s.timeframe];
   const atrCtx = ctx?.atr ?? 0;
-  const h4 = a.H4;
-  const h1 = a.H1;
+  // nama field tetap (h4/alignH4/ema200H4/slopeH4) agar data riset lama sebanding: kini = TF bias besar (biasTfs.major)
+  const h4 = a[c.config.biasTfs.major];
+  const h1 = a[c.config.biasTfs.minor];
   const comp = Object.fromEntries(s.score.components.map((x) => [x.key, x.points]));
   const biasSign = (b: MarketBias | undefined) => (b === "bullish" ? 1 : b === "bearish" ? -1 : 0);
   const pd = prevDayRange(c.candles.H1 ?? [], c.nowSec);
   const asia = asiaRange(c.candles.M15 ?? [], c.nowSec);
-  const atrH1 = h1?.atr ?? null;
+  const atrH1 = a.H1?.atr ?? null;
   const rsi = ctx && Number.isFinite(ctx.rsi) ? ctx.rsi : null;
   const t = new Date(c.nowSec * 1000);
   return {

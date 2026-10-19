@@ -1,6 +1,6 @@
 import type { AnalysisStatus, Candle, FeedStatus, OpportunityStatus, Timeframe } from "./types.ts";
 import { ACTIVE_STATUSES } from "./types.ts";
-import { EXPERIMENTAL_STRATEGIES, type EngineConfig } from "./config.ts";
+import { EXPERIMENTAL_STRATEGIES, analysisTfs, type EngineConfig } from "./config.ts";
 import { analyzeMarket, summarizeStatus, type MultiTfAnalysis } from "./analysis.ts";
 import { assessQuality, closedAsOf, type QualityReport } from "./dataQuality.ts";
 import { detectAll, type SetupCandidate } from "./strategies.ts";
@@ -85,7 +85,7 @@ const FEED_LABEL: Record<FeedStatus, string> = {
  */
 export function runEngineCycle(i: EngineInput): EngineOutput {
   const cfg = i.config;
-  const tfs: Timeframe[] = ["H4", "H1", "M15", "M5"];
+  const tfs: Timeframe[] = analysisTfs(cfg);
   const closed: Partial<Record<Timeframe, Candle[]>> = {};
   for (const tf of Object.keys(i.rawCandles) as Timeframe[]) closed[tf] = closedAsOf(i.rawCandles[tf] ?? [], tf, i.nowSec);
 
@@ -100,7 +100,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     spreadPips: i.spreadPips,
     thresholds: cfg.thresholds,
   });
-  const analysis = analyzeMarket({ nowSec: i.nowSec, candles: closed }, tfs);
+  const analysis = analyzeMarket({ nowSec: i.nowSec, candles: closed }, tfs, cfg.biasTfs);
 
   const notifications: EngineNotification[] = [];
   const created: SetupCandidate[] = [];

@@ -18,6 +18,8 @@ export interface EngineConfig {
    */
   planByTf: Partial<Record<Timeframe, PipPlan>>;
   thresholds: QualityThresholds;
+  /** bias utama: TF besar (major) + TF pendukung (minor) — sejak 19 Okt 2026: H1 + M30 */
+  biasTfs: { major: Timeframe; minor: Timeframe };
   pairs: TfPair[];
   strategies: StrategyId[];
   /** skor minimum agar engine menyimpan setup (filter per pengguna bisa lebih ketat) */
@@ -26,7 +28,7 @@ export interface EngineConfig {
   minScoreByTf: Partial<Record<Timeframe, number>>;
   /** RR minimum pada TP2 setelah biaya spread (syarat wajib kelayakan risiko) */
   minRrAfterCost: number;
-  /** SL minimum dalam kelipatan ATR timeframe konfirmasi (di bawahnya = noise) */
+  /** SL minimum dalam kelipatan ATR timeframe konfirmasi (di bawahnya = noise); tidak dipakai bila TF konfirmasi = TF konteks */
   minSlAtrConfirm: number;
   /** SL minimum dalam kelipatan ATR timeframe konteks */
   minSlAtrContext: number;
@@ -49,18 +51,21 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   plan: DEFAULT_PIP_PLAN,
   planByTf: {
     M15: DEFAULT_PIP_PLAN,
+    M30: { slPips: 70, tp1Pips: 70, tp2Pips: 140, tp3Pips: 210 },
     H1: { slPips: 100, tp1Pips: 100, tp2Pips: 200, tp3Pips: 300 },
   },
   thresholds: DEFAULT_THRESHOLDS,
+  // hanya M15, M30, H1 (permintaan pengguna 19 Okt 2026): bias H1+M30, setup M15 & M30, konfirmasi candle M15
+  biasTfs: { major: "H1", minor: "M30" },
   pairs: [
-    { context: "M15", confirm: "M5" },
-    { context: "H1", confirm: "M15" },
+    { context: "M15", confirm: "M15" },
+    { context: "M30", confirm: "M15" },
   ],
   strategies: ["trend_pullback", "breakout_retest"],
   engineMinScore: 40,
-  minScoreByTf: { M15: 60, H1: 60 },
+  minScoreByTf: { M15: 60, M30: 60, H1: 60 },
   minRrAfterCost: 1.5,
-  minSlAtrConfirm: 1.0,
+  minSlAtrConfirm: 0.8,
   minSlAtrContext: 0.75,
   expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8 },
   dedupePips: 30,
@@ -84,9 +89,15 @@ export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): 
       ]),
     ),
     thresholds: { ...DEFAULT_ENGINE_CONFIG.thresholds, ...(partial.thresholds ?? {}) },
+    biasTfs: { ...DEFAULT_ENGINE_CONFIG.biasTfs, ...(partial.biasTfs ?? {}) },
     expiryBars: { ...DEFAULT_ENGINE_CONFIG.expiryBars, ...(partial.expiryBars ?? {}) },
     minScoreByTf: { ...DEFAULT_ENGINE_CONFIG.minScoreByTf, ...(partial.minScoreByTf ?? {}) },
   };
+}
+
+/** Semua TF yang dianalisis: bias (major, minor) + konteks & konfirmasi tiap pasangan. */
+export function analysisTfs(cfg: Pick<EngineConfig, "biasTfs" | "pairs">): Timeframe[] {
+  return [...new Set([cfg.biasTfs.major, cfg.biasTfs.minor, ...cfg.pairs.flatMap((p) => [p.context, p.confirm])])];
 }
 
 /** Rencana SL/TP untuk timeframe konteks tertentu. */

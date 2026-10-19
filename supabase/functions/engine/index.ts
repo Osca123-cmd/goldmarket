@@ -8,6 +8,7 @@ import {
   ProviderError,
   backoffSeconds,
   createProvider,
+  analysisTfs,
   usesTwelveDataCandles,
   dedupeCandles,
   marketHoursOnly,
@@ -56,7 +57,6 @@ const MAX_RETRIES = Number(env("MAX_RETRIES", "6"));
 const QUOTE_INTERVAL_SEC = Number(env("QUOTE_INTERVAL_SEC", "60"));
 const ASSUMED_SPREAD_PIPS = Number(env("ASSUMED_SPREAD_PIPS", "3"));
 const STORED_TFS: Timeframe[] = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
-const ANALYSIS_TFS: Timeframe[] = ["H4", "H1", "M15", "M5"];
 const SIGNAL_MAX_HOLD_SEC = Number(env("SIGNAL_MAX_HOLD_HOURS", "24")) * 3600;
 const APP_URL = env("APP_URL", "https://osca123-cmd.github.io/goldmarket/");
 const NEWS_BELL_MIN = 30; // notifikasi in-app (lonceng) untuk news besar, menit sebelum rilis
@@ -418,7 +418,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
 
   // ---- analisis ----
   const raw: Partial<Record<Timeframe, Candle[]>> = {};
-  for (const tf of ANALYSIS_TFS) raw[tf] = await loadCandles(db, provider.id, tf, 300);
+  for (const tf of analysisTfs(cfg)) raw[tf] = await loadCandles(db, provider.id, tf, 300);
   const since = iso(t0 - 3 * 86400);
   const { data: existingRows } = await db
     .from("setups")
@@ -460,6 +460,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   }
   const levels = [
     ...(out.analysis.tfs.H1?.levels ?? []).map((l) => ({ ...l, tf: "H1" })),
+    ...(out.analysis.tfs.M30?.levels ?? []).map((l) => ({ ...l, tf: "M30" })),
     ...(out.analysis.tfs.M15?.levels ?? []).map((l) => ({ ...l, tf: "M15" })),
   ].filter((l) => l.touches >= 2 && price != null && Math.abs(l.price - price) < 30);
   await db.from("analysis_snapshots").insert({
@@ -896,9 +897,9 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-22.6"; // .6: riset batas SL/ATR konteks 0,6 (BT_MIN_SL_ATR_CTX)
+const STRATEGY_CODE_VERSION = "2026-10-22.7"; // .7: hanya M15/M30/H1 (bias H1+M30, setup M15 & M30, konfirmasi M15)
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
-const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
+const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M30: 9, M15: 5, M5: 4 };
 const BT_SOURCE_LABEL: Record<string, string> = {
   twelvedata: "Twelve Data — XAU/USD, jam pasar emas",
   binance_paxg: "Binance — PAXG/USDT (proxy emas), jam pasar emas",
@@ -976,7 +977,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   const simEnd = Math.min(end + 86400 + 3600, nowSec);
   const candles: Partial<Record<Timeframe, Candle[]>> = {};
   const bars: Record<string, number> = {};
-  for (const tf of ["H4", "H1", "M15", "M5"] as Timeframe[]) {
+  // TF analisis + H1 (fitur riset hari sebelumnya)
+  for (const tf of [...new Set<Timeframe>([...analysisTfs(btCfg), "H1"])]) {
     const from = start - (BT_WARMUP_DAYS[tf] ?? 5) * 86400;
     const count = Math.ceil((simEnd - from) / TF_SECONDS[tf]) + 2;
     const raw = await hist.fetchCandles(tf, count, simEnd);

@@ -140,8 +140,8 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
 
   const gates: Gate[] = [];
   gates.push({ key: "data", label: "Kualitas data", pass: true, note: "Lolos validasi data sebelum deteksi." });
-  // sd_reversal sengaja dua arah, tetapi hanya saat H4 ranging (dicek di detektornya)
-  const counterOk = d.strategy === "sd_reversal" && c.analysis.tfs.H4?.bias === "ranging";
+  // sd_reversal sengaja dua arah, tetapi hanya saat TF bias besar ranging (dicek di detektornya)
+  const counterOk = d.strategy === "sd_reversal" && c.analysis.tfs[c.config.biasTfs.major]?.bias === "ranging";
   const biasOpposite = opposite(c.analysis.mainBias, d.direction) && !counterOk;
   const structOk = d.invalidation != null && !biasOpposite;
   gates.push({
@@ -154,7 +154,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
         : biasOpposite
           ? "Bias utama berlawanan."
           : counterOk
-            ? "Invalidasi struktur terdefinisi; H4 ranging sehingga reversal dua arah diizinkan."
+            ? `Invalidasi struktur terdefinisi; ${c.config.biasTfs.major} ranging sehingga reversal dua arah diizinkan.`
             : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
   });
   let invOk = false;
@@ -174,12 +174,14 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
           : `Invalidasi ${inv.toFixed(2)} berada di antara entry dan SL ${lv.sl.toFixed(2)}.`;
   }
   gates.push({ key: "invalidation", label: "SL vs invalidasi", pass: invOk, note: invNote });
-  const volOk = slPrice >= c.config.minSlAtrConfirm * atrConf && slPrice >= c.config.minSlAtrContext * atrCtx;
+  // TF konfirmasi = TF konteks (mis. M15/M15): cukup batas ATR konteks
+  const sameTf = d.pair.confirm === d.pair.context;
+  const volOk = (sameTf || slPrice >= c.config.minSlAtrConfirm * atrConf) && slPrice >= c.config.minSlAtrContext * atrCtx;
   gates.push({
     key: "volatility",
     label: "Volatilitas",
     pass: volOk,
-    note: `SL ${slPrice.toFixed(2)} = ${(slPrice / atrConf).toFixed(2)}× ATR ${d.pair.confirm} dan ${(slPrice / atrCtx).toFixed(2)}× ATR ${d.pair.context}${volOk ? "" : " — terlalu sempit untuk volatilitas saat ini"}.`,
+    note: `SL ${slPrice.toFixed(2)} = ${sameTf ? "" : `${(slPrice / atrConf).toFixed(2)}× ATR ${d.pair.confirm} dan `}${(slPrice / atrCtx).toFixed(2)}× ATR ${d.pair.context}${volOk ? "" : " — terlalu sempit untuk volatilitas saat ini"}.`,
   });
   const riskOk = rr.tp2AfterCost >= c.config.minRrAfterCost && spread <= c.config.thresholds.maxSpreadPips;
   gates.push({
@@ -419,7 +421,7 @@ export function detectLiquiditySweep(direction: Direction, pair: TfPair, c: Dete
 }
 
 /**
- * Supply/Demand reversal: saat H4 ranging, harga mendekati level ≥2 sentuhan dari
+ * Supply/Demand reversal: saat TF bias besar (H1) ranging, harga mendekati level ≥2 sentuhan dari
  * arah berlawanan (resistance di atas = supply → SELL, support di bawah = demand → BUY)
  * dan diharapkan memantul; konfirmasi candle pembalikan di TF konfirmasi menambah skor.
  * Invalidasi 0,35× ATR di luar level: bila zona ditembus sejauh itu, ide pantulan batal
@@ -430,7 +432,8 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
   const ctx = c.analysis.tfs[pair.context];
   const confCandles = c.candles[pair.confirm] ?? [];
   if (!ctx || confCandles.length < 3) return null;
-  if (c.analysis.tfs.H4?.bias !== "ranging") return null;
+  const major = c.config.biasTfs.major;
+  if (c.analysis.tfs[major]?.bias !== "ranging") return null;
   const s = sgn(direction);
   const a = ctx.atr;
   // BUY: support di bawah/di sekitar harga; SELL: resistance di atas/di sekitar harga
@@ -446,7 +449,7 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
   if (s * (c.price - invalidation) <= 0) return null;
   const reasons = [
     ...c.analysis.reasons,
-    `H4 ranging: reversal dua arah di zona ${direction === "BUY" ? "demand (support)" : "supply (resistance)"} ${L.price.toFixed(2)} (${L.touches}× sentuhan) ${pair.context}.`,
+    `${major} ranging: reversal dua arah di zona ${direction === "BUY" ? "demand (support)" : "supply (resistance)"} ${L.price.toFixed(2)} (${L.touches}× sentuhan) ${pair.context}.`,
     `Area entry ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi bila harga menembus ${invalidation.toFixed(2)}.`,
   ];
   return finalize(

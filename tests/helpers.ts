@@ -17,6 +17,7 @@ export function demoView(endSec: number) {
   return {
     H4: demoSeries("H4", endSec, 300),
     H1: demoSeries("H1", endSec, 300),
+    M30: demoSeries("M30", endSec, 300),
     M15: demoSeries("M15", endSec, 300),
     M5: demoSeries("M5", endSec, 300),
   } as Partial<Record<Timeframe, Candle[]>>;

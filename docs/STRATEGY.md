@@ -11,7 +11,8 @@ Semua aturan diimplementasikan di `src/core/` (dipakai identik oleh engine serve
 | Desimal | 2 | |
 | Contract size | 100 oz/lot | hanya untuk lot & P/L |
 | SL / TP1 / TP2 / TP3 — setup **M15** | 50 / 50 / 100 / 150 pips | = 5 / 5 / 10 / 15 USD |
-| SL / TP1 / TP2 / TP3 — setup **H1** | 100 / 100 / 200 / 300 pips | = 10 / 10 / 20 / 30 USD |
+| SL / TP1 / TP2 / TP3 — setup **M30** | 70 / 70 / 140 / 210 pips | = 7 / 7 / 14 / 21 USD |
+| SL / TP1 / TP2 / TP3 — setup H1 (tidak aktif sejak 19 Okt 2026) | 100 / 100 / 200 / 300 pips | = 10 / 10 / 20 / 30 USD |
 
 Rencana per timeframe (`EngineConfig.planByTf`, `planFor`): pada harga emas ±$4.000, SL 50 pips ($5) lebih kecil dari ATR H1 hari kerja ($10–15), sehingga setup H1 hampir selalu gagal gate volatilitas. Karena itu H1 memakai rencana sendiri (keputusan pengguna, Okt 2026). Rencana tampil eksplisit di setiap setup.
 
@@ -21,18 +22,21 @@ Level **tidak pernah diubah diam-diam**: jika SL tetap tidak cocok dengan strukt
 
 ## 2. Pembagian timeframe
 
+Sejak 19 Okt 2026 (permintaan pengguna: "pakai M15, M30 dan H1 saja") engine hanya membaca **M15, M30, H1** (`EngineConfig.biasTfs`, `pairs`, `analysisTfs`).
+
 | TF | Peran |
 |---|---|
-| H4 + H1 | Bias tren utama |
-| M15 | Konteks setup (pasangan M15→M5) |
-| M5 | Konfirmasi entry |
-| H1 → M15 | Pasangan kedua (setup H1, konfirmasi M15) |
-| M1 | Informasi tambahan di chart (tidak dipakai sinyal) |
+| H1 + M30 | Bias tren utama (H1 = TF besar, M30 = pendukung) |
+| M15 | Setup M15, konfirmasi candle M15 itu sendiri |
+| M30 → M15 | Setup M30, konfirmasi candle M15 |
+| M1, M5, H4, D1 | Informasi tambahan di chart (tidak dipakai sinyal) |
+
+Gate volatilitas: bila TF konfirmasi = TF konteks (M15/M15) hanya batas ATR konteks yang dipakai; selain itu SL ≥ 0,8 × ATR TF konfirmasi.
 
 **Bias per TF** (`analyzeTimeframe`): bullish bila struktur HH+HL **dan** close > EMA50 **dan** EMA20 > EMA50; bearish sebaliknya; jika struktur campuran tetapi EMA20/50/200 tersusun rapi dan kemiringan EMA50 > 0,3 ATR per 5 bar → ikut arah EMA; selain itu ranging.
 Struktur = 2 swing high & 2 swing low terakhir (pivot fraktal 3-kiri/3-kanan; swing baru terkonfirmasi setelah 3 bar tertutup — tidak ada look-ahead).
 
-**Bias utama**: H4 & H1 searah → kuat; H1 berarah & H4 ranging → moderat; konflik/H1 ranging → ranging.
+**Bias utama**: H1 & M30 searah → kuat; M30 berarah & H1 ranging → moderat; konflik/M30 ranging → ranging. (Sebelum 19 Okt 2026: H4 + H1.) Supply/Demand reversal aktif saat **H1** ranging.
 
 **Status analisis**: `Tidak ada setup valid` (data gagal validasi) → `Menunggu konfirmasi` (ada setup aktif belum terkonfirmasi) → `Bullish` / `Bearish` / `Ranging`.
 
