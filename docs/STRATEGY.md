@@ -58,7 +58,7 @@ Konfirmasi hanya memakai **candle tertutup** (`closedAsOf`). Harga intrabar dipa
 
 ### Strategi riset (hanya backtest; live hanya bila terbukti & disetujui)
 - **Liquidity sweep** (`detectLiquiditySweep`): candle konteks menembus high/low hari sebelumnya, range Asia, atau swing lalu menutup kembali ke dalam; entry retest level yang direbut, invalidasi di luar ujung sweep.
-- **Supply/Demand reversal** (`detectSdReversal`): hanya saat **H4 ranging**; SELL di resistance (supply) ≥ 2 sentuhan di atas harga, BUY di support (demand) di bawah harga — boleh melawan bias H1. Area −0,25/+0,1 ATR (SELL), invalidasi = level ± 0,6 ATR (SL selalu di sisi yang benar).
+- **Supply/Demand reversal** (`detectSdReversal`): hanya saat **H4 ranging**; SELL di resistance (supply) ≥ 2 sentuhan di atas harga, BUY di support (demand) di bawah harga — boleh melawan bias H1. Area −0,25/+0,1 ATR (SELL), invalidasi = level ± 0,35 ATR (zona ditembus = ide pantulan batal; SL selalu di sisi yang benar). Aktif di live sebagai **eksperimen** (berlabel) sejak 19 Okt 2026 atas permintaan pengguna.
 
 ### Jenis entry (ditetapkan saat setup dibuat, tidak berubah)
 - **Market**: candle konfirmasi TF konfirmasi sudah tertutup di area dan harga masih di area.

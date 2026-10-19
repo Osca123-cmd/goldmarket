@@ -896,7 +896,7 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-22.3"; // .3: riset sd_reversal (dua arah saat H4 ranging)
+const STRATEGY_CODE_VERSION = "2026-10-22.4"; // .4: sd_reversal invalidasi 0,35× ATR
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE_LABEL: Record<string, string> = {

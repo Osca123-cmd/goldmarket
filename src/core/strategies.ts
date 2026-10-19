@@ -422,7 +422,9 @@ export function detectLiquiditySweep(direction: Direction, pair: TfPair, c: Dete
  * Supply/Demand reversal: saat H4 ranging, harga mendekati level ≥2 sentuhan dari
  * arah berlawanan (resistance di atas = supply → SELL, support di bawah = demand → BUY)
  * dan diharapkan memantul; konfirmasi candle pembalikan di TF konfirmasi menambah skor.
- * Invalidasi di luar level (0,6× ATR). Dua arah, boleh melawan bias H1. (Riset.)
+ * Invalidasi 0,35× ATR di luar level: bila zona ditembus sejauh itu, ide pantulan batal
+ * (lebih rapat dari breakout retest agar SL tetap rencana TF bisa melindunginya). Dua arah,
+ * boleh melawan bias H1. (Eksperimen.)
  */
 export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   const ctx = c.analysis.tfs[pair.context];
@@ -440,7 +442,7 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
   const zoneHigh = direction === "BUY" ? L.price + 0.25 * a : L.price + 0.1 * a;
   const edge = direction === "BUY" ? zoneHigh : zoneLow;
   if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
-  const invalidation = L.price - s * 0.6 * a;
+  const invalidation = L.price - s * 0.35 * a;
   if (s * (c.price - invalidation) <= 0) return null;
   const reasons = [
     ...c.analysis.reasons,
