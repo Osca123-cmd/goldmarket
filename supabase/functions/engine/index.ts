@@ -896,7 +896,7 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-22.5"; // .5: sd_reversal invalidasi 0,35× ATR + identitas per sentuhan
+const STRATEGY_CODE_VERSION = "2026-10-22.6"; // .6: riset batas SL/ATR konteks 0,6 (BT_MIN_SL_ATR_CTX)
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE_LABEL: Record<string, string> = {
@@ -907,6 +907,8 @@ const BT_SOURCE_LABEL: Record<string, string> = {
 const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep", "sd_reversal"];
 /** toleransi invalidasi yang ikut disimulasikan untuk RISET; ringkasan live hanya memakai trade dengan invSlackPips ≤ toleransi live */
 const BT_INV_TOL_PIPS = 5;
+/** batas SL minimum (× ATR konteks) yang ikut disimulasikan untuk RISET; ringkasan live memfilter features.slAtrCtx */
+const BT_MIN_SL_ATR_CTX = 0.6;
 
 /**
  * Versi = apa yang DISIMULASIKAN (gabungan strategi live + riset, toleransi riset), bukan pilihan live:
@@ -939,13 +941,13 @@ function tradeRow(t: BacktestTrade, version: string, chunkStart: number) {
   };
 }
 
-async function loadTrades(db: Db, version: string): Promise<(BacktestTrade & { invSlack: number })[]> {
-  const out: (BacktestTrade & { invSlack: number })[] = [];
+async function loadTrades(db: Db, version: string): Promise<(BacktestTrade & { invSlack: number; slAtrCtx: number })[]> {
+  const out: (BacktestTrade & { invSlack: number; slAtrCtx: number })[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("backtest_trades").select("created_at,strategy,timeframe,direction,session,sl_pips,entry_touched,invalid_before,tp,ambiguous,pips,inv_slack:features->invSlackPips").eq("version", version).order("created_at").range(from, from + 999);
+    const { data, error } = await db.from("backtest_trades").select("created_at,strategy,timeframe,direction,session,sl_pips,entry_touched,invalid_before,tp,ambiguous,pips,inv_slack:features->invSlackPips,sl_atr_ctx:features->slAtrCtx").eq("version", version).order("created_at").range(from, from + 999);
     if (error) throw new Error(`load trades: ${error.message}`);
     for (const r of data ?? []) {
-      out.push({ createdAt: sec(r.created_at)!, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, session: r.session, slPips: r.sl_pips, entryTouched: r.entry_touched, invalidBeforeEntry: r.invalid_before, tp: r.tp, ambiguous: r.ambiguous, pips: r.pips, invSlack: Number(r.inv_slack ?? 0) });
+      out.push({ createdAt: sec(r.created_at)!, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, session: r.session, slPips: r.sl_pips, entryTouched: r.entry_touched, invalidBeforeEntry: r.invalid_before, tp: r.tp, ambiguous: r.ambiguous, pips: r.pips, invSlack: Number(r.inv_slack ?? 0), slAtrCtx: Number(r.sl_atr_ctx ?? Infinity) });
     }
     if (!data || data.length < 1000) break;
   }
@@ -960,6 +962,7 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     ...cfg,
     strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
     invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
+    minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);
@@ -990,8 +993,10 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   await db.from("backtest_chunks").upsert({ chunk_start: iso(start), version, computed_at: iso(nowSec), setups: trades.length, touched: trades.filter((t) => t.entryTouched).length }, { onConflict: "chunk_start,version" });
 
   // ---- ringkas ulang seluruh potongan versi ini ----
-  // ringkasan & probabilitas live: hanya strategi live dan trade yang lolos toleransi invalidasi live
-  const all = (await loadTrades(db, version)).filter((t) => (cfg.strategies as string[]).includes(t.strategy) && t.invSlack <= cfg.invalidationTolPips + 1e-9);
+  // ringkasan & probabilitas live: hanya strategi live dan trade yang lolos gate live (toleransi invalidasi, SL/ATR konteks)
+  const all = (await loadTrades(db, version)).filter(
+    (t) => (cfg.strategies as string[]).includes(t.strategy) && t.invSlack <= cfg.invalidationTolPips + 1e-9 && t.slAtrCtx >= cfg.minSlAtrContext - 1e-9,
+  );
   const { count: chunks } = await db.from("backtest_chunks").select("chunk_start", { count: "exact", head: true }).eq("version", version);
   // versi baru belum lengkap → laporan & probabilitas versi lama tetap tampil (tidak diganti sampel kecil)
   const complete = (chunks ?? 0) >= expectedChunks(nowSec, BT_MONTHS);

@@ -73,8 +73,8 @@ Pola konfirmasi: engulfing, pin bar penolakan (wick ≥ 2× body, ≥ 55% range)
 |---|---|
 | Kualitas data | lolos §3 |
 | Struktur | ada level invalidasi struktur & bias utama tidak berlawanan |
-| SL vs invalidasi | invalidasi berada di antara entry dan SL (SL tetap tidak lebih sempit dari struktur). `invalidationTolPips` (default 0) mengizinkan SL maks. N pips di dalam invalidasi; backtest meriset 5 pips dan mencatat `invSlackPips` per trade |
-| Volatilitas | jarak SL ≥ 1,0 × ATR TF konfirmasi dan ≥ 0,75 × ATR TF konteks |
+| SL vs invalidasi | invalidasi berada di antara entry dan SL (SL tetap tidak lebih sempit dari struktur). `invalidationTolPips` (default 0; live 5 sejak 19 Okt 2026) mengizinkan SL maks. N pips di dalam invalidasi; backtest meriset 5 pips dan mencatat `invSlackPips` per trade |
+| Volatilitas | jarak SL ≥ 1,0 × ATR TF konfirmasi dan ≥ `minSlAtrContext` × ATR TF konteks (default 0,75; live 0,6 sejak 19 Okt 2026 atas permintaan pengguna — backtest meriset 0,6 dan mencatat `slAtrCtx` per trade) |
 | Kelayakan risiko | RR TP2 setelah spread ≥ 1,5 dan spread ≤ 8 pips |
 
 Setup gagal gate disimpan sebagai **Invalid / Tidak layak** dengan alasan, tanpa notifikasi.
