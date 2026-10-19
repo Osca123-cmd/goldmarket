@@ -127,6 +127,8 @@ Permintaan pengguna 19 Okt 2026, setelah volatilitas tiba-tiba saat pembukaan Lo
 
 - **Reset tampilan harian 23.10 WIB**: Signal History di halaman Peluang dan lonceng notifikasi hanya menampilkan hari trading berjalan (plus sinyal yang masih berjalan). Tidak ada data yang dihapus — panel **Overall Performance** (Day/Week/Month/All) dan Jurnal → Sinyal tetap memuat semuanya. Day = sejak reset 23.10 WIB; Week = sejak Senin 00.00 WIB; Month = sejak tanggal 1 (WIB).
 
+- **Trend pullback dihapus dari sinyal live** (20 Okt 2026, permintaan pengguna: tidak ada setup layak sejak 19 Okt). Tetap disimulasikan di backtest sebagai riset.
+
 ### Sinyal yang dikecualikan
 Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded_reason`). Sinyal itu **tidak pernah dihapus**: tetap tampil di Riwayat Sinyal dengan badge DIKECUALIKAN dan alasannya, dan jumlahnya selalu ditampilkan di statistik.
 

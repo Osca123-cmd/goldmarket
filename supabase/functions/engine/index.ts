@@ -925,7 +925,8 @@ const BT_SOURCE_LABEL: Record<string, string> = {
   binance_paxg: "Binance — PAXG/USDT (proxy emas), jam pasar emas",
 };
 /** strategi yang ikut disimulasikan untuk RISET (tidak tampil di ringkasan/probabilitas live) */
-const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep", "sd_reversal"];
+// semua strategi tetap disimulasikan walau dimatikan di live, supaya versi backtest (hash) tidak berubah
+const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["trend_pullback", "breakout_retest", "liquidity_sweep", "sd_reversal"];
 /** toleransi invalidasi yang ikut disimulasikan untuk RISET; ringkasan live hanya memakai trade dengan invSlackPips ≤ toleransi live */
 const BT_INV_TOL_PIPS = 5;
 /** batas SL minimum (× ATR konteks) yang ikut disimulasikan untuk RISET; ringkasan live memfilter features.slAtrCtx */
