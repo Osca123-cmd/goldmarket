@@ -9,6 +9,8 @@ import { supabase } from "@/lib/supabase";
 import { computeStats, tradesToCsv, type GroupStats } from "@/core/stats";
 import type { JournalPartial, JournalTrade } from "@/core/journal";
 import { STRATEGY_LABEL } from "@/core/config";
+import { computeSignalStats, type SignalGroup } from "@/core/signalStats";
+import { useSignalHistory } from "@/lib/market";
 
 export default function Page() {
   return (
@@ -19,18 +21,119 @@ export default function Page() {
 }
 
 function StatsTabs() {
-  const [tab, setTab] = useState<"journal" | "backtest">("journal");
+  const [tab, setTab] = useState<"signals" | "journal" | "backtest">("signals");
+  const LABEL = { signals: "Sinyal (otomatis)", journal: "Jurnal saya", backtest: "Backtest strategi" } as const;
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        {(["journal", "backtest"] as const).map((t) => (
+      <div className="flex flex-wrap gap-2">
+        {(["signals", "journal", "backtest"] as const).map((t) => (
           <button key={t} className={cx("rounded-xl border px-4 py-2 text-sm font-semibold", tab === t ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted hover:text-ink")} onClick={() => setTab(t)}>
-            {t === "journal" ? "Jurnal saya" : "Backtest strategi"}
+            {LABEL[t]}
           </button>
         ))}
       </div>
-      {tab === "journal" ? <StatsPage /> : <BacktestPanel />}
+      {tab === "signals" ? <SignalStatsPage /> : tab === "journal" ? <StatsPage /> : <BacktestPanel />}
     </div>
+  );
+}
+
+const signedPips = (v: number) => (Math.abs(v) < 0.05 ? "0 pips" : `${v > 0 ? "+" : ""}${fmt(v, 1)} pips`);
+
+/** Statistik otomatis dari hasil sinyal engine — terisi sendiri tanpa input jurnal. */
+function SignalStatsPage() {
+  const { settings } = useAuth();
+  const tz = settings?.display_tz ?? "Asia/Jakarta";
+  const history = useSignalHistory(1000);
+  const s = useMemo(() => computeSignalStats(history.data ?? [], tz), [history.data, tz]);
+
+  if (!history.data) return <p className="text-sm text-muted">{history.error ? `Gagal memuat riwayat sinyal: ${history.error}` : "Memuat statistik sinyal…"}</p>;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold">Statistik sinyal</h1>
+        <p className="text-sm text-muted">Otomatis dari hasil setiap sinyal engine (Riwayat Sinyal) — tanpa input manual. Ini hasil level sinyal menurut feed, bukan transaksi Anda.</p>
+      </div>
+
+      {s.closed > 0 && s.closed < 30 && <p className="rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs text-warn">• Sampel kecil ({s.closed} sinyal selesai); statistik belum stabil.</p>}
+
+      {s.closed === 0 ? (
+        <Empty title="Belum ada sinyal selesai">Sinyal berjalan: {s.running}. Statistik terisi otomatis begitu sinyal pertama ditutup (WIN/LOSS/TIMEOUT).</Empty>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <Stat label="Sinyal selesai" value={s.closed} sub={`${s.running} masih berjalan`} />
+            <Stat label="Win rate" value={s.winRate == null ? "—" : `${fmt(s.winRate * 100, 1)}%`} sub={`${s.wins}W / ${s.losses}L${s.timeouts ? ` / ${s.timeouts} timeout` : ""}`} />
+            <Stat label="Total pips" value={signedPips(s.totalPips)} tone={s.totalPips >= 0 ? "buy" : "sell"} sub={s.avgPips == null ? undefined : `rata-rata ${signedPips(s.avgPips)}/sinyal`} />
+            <Stat label="Profit factor" value={s.profitFactor == null ? "—" : fmt(s.profitFactor)} />
+            <Stat label="Avg win / loss" value={`${s.avgWin == null ? "—" : signedPips(s.avgWin)} / ${s.avgLoss == null ? "—" : signedPips(s.avgLoss)}`} />
+            <Stat label="Max drawdown" value={signedPips(-s.maxDrawdownPips)} tone="sell" sub={`runtun kalah terpanjang ${s.maxLossStreak}`} />
+          </div>
+
+          <Card title="TP tercapai (dari sinyal WIN)">
+            <div className="grid grid-cols-3 gap-2">
+              {s.tpReach.map((n, i) => (
+                <Stat key={i} label={`TP${i + 1}`} value={n} sub={s.wins ? `${fmt((n / s.wins) * 100, 0)}% dari WIN` : undefined} tone="buy" />
+              ))}
+            </div>
+          </Card>
+
+          <Card title="Kurva pips kumulatif (sinyal selesai)">
+            <Equity points={s.equity.map((e) => e.pips)} label="Kurva pips kumulatif" />
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <SignalGroupTable title="Per timeframe" rows={s.byTimeframe} />
+            <SignalGroupTable title="Per arah" rows={s.byDirection} />
+            <SignalGroupTable title="Per strategi" rows={s.byStrategy} label={(k) => STRATEGY_LABEL[k as keyof typeof STRATEGY_LABEL] ?? k} />
+          </div>
+
+          <Card title="Kalender hasil sinyal">
+            <Calendar data={s.calendar} format={(v) => signedPips(v)} unit="sinyal" />
+          </Card>
+        </>
+      )}
+
+      <Card title="Metode perhitungan">
+        <ul className="list-disc space-y-1 pl-4 text-xs text-muted">
+          <li>Terisi otomatis dari engine: setiap sinyal yang entry-nya tersentuh dilacak sampai selesai. Tidak perlu input jurnal.</li>
+          <li>Setelah TP1, SL dipindah ke entry (BE). WIN = pips TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry, TP3, atau 24 jam. LOSS = SL sebelum TP1.</li>
+          <li>Win rate = WIN ÷ (WIN + LOSS). TIMEOUT (24 jam tanpa TP1/SL) tidak masuk menang/kalah, tetapi pips-nya ikut dijumlah.</li>
+          <li>Pips level sinyal menurut feed, belum termasuk spread/komisi/slippage — bukan hasil transaksi Anda. Hasil transaksi nyata ada di tab Jurnal saya.</li>
+          <li>Drawdown = penurunan terbesar dari puncak kurva pips kumulatif (urut waktu tutup). Kalender memakai tanggal tutup di zona {tz}.</li>
+        </ul>
+      </Card>
+      <Disclaimer />
+    </div>
+  );
+}
+
+function SignalGroupTable({ title, rows, label }: { title: string; rows: SignalGroup[]; label?: (k: string) => string }) {
+  return (
+    <Card title={title}>
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Grup</th>
+              <th>N</th>
+              <th>Win%</th>
+              <th>Pips</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>{label ? label(r.key) : r.key}</td>
+                <td className="num">{r.signals}</td>
+                <td className="num">{r.winRate == null ? "—" : fmt(r.winRate * 100, 0)}</td>
+                <td className={cx("num", r.pips >= 0 ? "text-buy" : "text-sell")}>{signedPips(r.pips)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 
@@ -106,7 +209,7 @@ function StatsPage() {
           </div>
 
           <Card title="Kurva ekuitas (transaksi tertutup)">
-            <Equity points={s.equity.map((e) => e.equity)} />
+            <Equity points={s.equity.map((e) => e.equity)} label="Kurva ekuitas" />
           </Card>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -116,7 +219,7 @@ function StatsPage() {
           </div>
 
           <Card title="Kalender hasil">
-            <Calendar data={s.calendar} ccy={ccy} />
+            <Calendar data={s.calendar} format={(v) => fmtMoney(v, ccy)} unit="transaksi" />
           </Card>
         </>
       )}
@@ -168,8 +271,8 @@ function GroupTable({ title, rows, ccy, label }: { title: string; rows: GroupSta
   );
 }
 
-function Equity({ points }: { points: number[] }) {
-  if (points.length < 2) return <p className="text-xs text-muted">Butuh minimal 2 transaksi tertutup.</p>;
+function Equity({ points, label }: { points: number[]; label: string }) {
+  if (points.length < 2) return <p className="text-xs text-muted">Butuh minimal 2 hasil tertutup.</p>;
   const pts = [0, ...points];
   const min = Math.min(...pts);
   const max = Math.max(...pts);
@@ -179,14 +282,14 @@ function Equity({ points }: { points: number[] }) {
   const y = (v: number) => h - ((v - min) / (max - min || 1)) * (h - 10) - 5;
   const d = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-48 w-full" preserveAspectRatio="none" role="img" aria-label="Kurva ekuitas">
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-48 w-full" preserveAspectRatio="none" role="img" aria-label={label}>
       <line x1="0" x2={w} y1={y(0)} y2={y(0)} stroke="#1d2b5a" strokeDasharray="4 4" />
       <path d={d} fill="none" stroke="#e8b84c" strokeWidth="2" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
 
-function Calendar({ data, ccy }: { data: Record<string, { net: number; trades: number }>; ccy: string }) {
+function Calendar({ data, format, unit }: { data: Record<string, { net: number; trades: number }>; format: (v: number) => string; unit: string }) {
   const months = useMemo(() => [...new Set(Object.keys(data).map((d) => d.slice(0, 7)))].sort().reverse(), [data]);
   const [m, setM] = useState(months[0]);
   if (!m) return null;
@@ -213,8 +316,8 @@ function Calendar({ data, ccy }: { data: Record<string, { net: number; trades: n
             <div key={i} className={cx("min-h-14 rounded-lg border p-1 text-left", v ? (v.net > 0 ? "border-buy/40 bg-buy/10" : v.net < 0 ? "border-sell/40 bg-sell/10" : "border-line") : "border-line/40")}>
               <div className="text-muted">{d}</div>
               {v && (
-                <div className={cx("num truncate text-[10px]", v.net >= 0 ? "text-buy" : "text-sell")} title={`${v.trades} transaksi`}>
-                  {fmtMoney(v.net, ccy)}
+                <div className={cx("num truncate text-[10px]", v.net >= 0 ? "text-buy" : "text-sell")} title={`${v.trades} ${unit}`}>
+                  {format(v.net)}
                 </div>
               )}
             </div>
