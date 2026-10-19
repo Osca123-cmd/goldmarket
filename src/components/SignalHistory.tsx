@@ -150,6 +150,11 @@ export function SignalDetails({ s, tz, price, extra }: { s: SetupRow; tz: string
               TP{tpHit} sudah tersentuh <span className="num font-bold text-buy">+{fmt(locked, 1)} pips</span>
             </span>
           )}
+          {locked != null && (
+            <span className="text-muted">
+              SL dipindah ke entry (BE) <span className="num font-semibold text-ink">{fmt(s.entry_price)}</span> — bila tersentuh, ditutup WIN +{fmt(locked, 1)} pips
+            </span>
+          )}
         </div>
       )}
       <div className="text-xs text-muted">
@@ -181,14 +186,14 @@ function ProgressLadder({ s, price }: { s: SetupRow; price: number | null }) {
   const tpHit = s.outcome_tp ?? 0;
   const d = s.direction === "BUY" ? 1 : -1;
   const steps = [
-    { label: "SL", value: s.sl, done: false, tone: "text-sell" },
+    tpHit >= 1 ? { label: "SL → BE", value: s.entry_price, done: false, tone: "text-gold" } : { label: "SL", value: s.sl, done: false, tone: "text-sell" },
     { label: "Entry", value: s.entry_price, done: true, tone: "text-ink" },
     { label: "TP1", value: s.tp1, done: tpHit >= 1, tone: "text-buy" },
     { label: "TP2", value: s.tp2, done: tpHit >= 2, tone: "text-buy" },
     { label: "TP3", value: s.tp3, done: tpHit >= 3, tone: "text-buy" },
   ];
-  // harga berada setelah level terakhir yang sudah dilewati searah posisi
-  const here = price == null ? -1 : steps.reduce((idx, st, i) => (d * (price - st.value) >= 0 ? i : idx), 0);
+  // harga berada setelah level terakhir (Entry..TP3) yang sudah dilewati searah posisi; di sisi rugi → kotak SL
+  const here = price == null ? -1 : steps.reduce((idx, st, i) => (i > 0 && d * (price - st.value) >= 0 ? i : idx), 0);
   return (
     <div className="grid grid-cols-5 gap-1 text-center">
       {steps.map((st, i) => (
@@ -198,7 +203,7 @@ function ProgressLadder({ s, price }: { s: SetupRow; price: number | null }) {
             {st.done && i > 1 ? " ✓" : ""}
           </div>
           <div className="num text-[11px]">{fmt(st.value)}</div>
-          {i === here && <div className="text-[9px] font-semibold text-gold">harga di sini</div>}
+          {i === here && <div className="text-[9px] font-semibold text-gold">{i === 0 ? "harga menuju sini" : "harga di sini"}</div>}
         </div>
       ))}
     </div>
@@ -211,7 +216,10 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
   const running = isRunningSignal(s);
   const tpHit = s.outcome_tp ?? 0;
   const result: ResultKind = running ? (tpHit >= 2 ? "tp2" : tpHit === 1 ? "tp1" : "running") : ((s.outcome ?? "open") as ResultKind);
-  const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, s.pip_size || 0.1) : null;
+  const pip = s.pip_size || 0.1;
+  const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
+  // setelah TP1 SL di BE: yang ditampilkan pips TP yang sudah aman, floating ada di detail
+  const locked = running && tpHit > 0 ? Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip : null;
   return (
     <>
       <HistoryRow
@@ -220,8 +228,8 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
         grade={grade}
         time={time}
         result={result}
-        pips={running ? float : s.outcome_pips}
-        pipsNote={running ? "floating" : undefined}
+        pips={locked ?? (running ? float : s.outcome_pips)}
+        pipsNote={locked != null ? "aman · SL di BE" : running ? "floating" : undefined}
         sub={open ? "Ketuk untuk menutup detail" : running && s.outcome_note ? `${s.outcome_note} Ketuk untuk detail.` : "Ketuk untuk lihat entry, SL & TP"}
         onClick={() => setOpen((v) => !v)}
         active={open}

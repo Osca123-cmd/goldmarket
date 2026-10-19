@@ -10,19 +10,19 @@ describe("hasil sinyal menurut feed", () => {
     const r = evaluateOutcome({ ...base, candles: [bar(900, 3001, 2999), bar(1200, 3002, 2994)] });
     expect(r).toMatchObject({ outcome: "loss", pips: -50, tpHit: 0 });
   });
-  it("TP2 lalu SL → WIN +100 pips (TP tertinggi sebelum SL)", () => {
-    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3000), bar(1500, 3011, 3004), bar(1800, 3008, 2994)] });
+  it("TP2 lalu kembali ke entry (BE) → WIN +100 pips", () => {
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3011, 3004), bar(1800, 3008, 2994)] });
     expect(r).toMatchObject({ outcome: "win", pips: 100, tpHit: 2 });
   });
   it("TP3 → WIN +150 pips", () => {
-    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3016, 2999)] })).toMatchObject({ outcome: "win", pips: 150, tpHit: 3 });
+    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3016, 3001)] })).toMatchObject({ outcome: "win", pips: 150, tpHit: 3 });
   });
   it("SL & TP1 di candle yang sama → konservatif LOSS dan ditandai ambigu", () => {
     const r = evaluateOutcome({ ...base, candles: [bar(1200, 3006, 2994)] });
     expect(r).toMatchObject({ outcome: "loss", ambiguous: true });
   });
   it("SELL simetris", () => {
-    const r = evaluateOutcome({ ...base, direction: "SELL", sl: 3005, tps: [2995, 2990, 2985], candles: [bar(1200, 3001, 2994)] });
+    const r = evaluateOutcome({ ...base, direction: "SELL", sl: 3005, tps: [2995, 2990, 2985], candles: [bar(1200, 2999.5, 2994)] });
     expect(r).toMatchObject({ outcome: "open", tpHit: 1 });
   });
   it("masih berjalan / batas waktu", () => {
@@ -45,6 +45,20 @@ describe("hasil sinyal menurut feed", () => {
   });
   it("SL di candle sentuhan tetap LOSS", () => {
     expect(evaluateOutcome({ ...base, candles: [bar(900, 3006, 2994)] })).toMatchObject({ outcome: "loss", pips: -50 });
+  });
+  it("setelah TP1, SL di BE: harga kembali ke entry → WIN +TP1, bukan menunggu SL awal", () => {
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3004, 2999.8)] });
+    expect(r).toMatchObject({ outcome: "win", tpHit: 1, pips: 50 });
+    expect(r.note).toContain("BE");
+  });
+  it("TP1 dan entry dalam candle yang sama → ditutup di BE (konservatif)", () => {
+    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3006, 2999)] })).toMatchObject({ outcome: "win", tpHit: 1, pips: 50, ambiguous: true });
+  });
+  it("TP2 dan entry dalam candle yang sama → hanya TP1 dihitung", () => {
+    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3011, 2999)] })).toMatchObject({ outcome: "win", tpHit: 1, pips: 50, ambiguous: true });
+  });
+  it("TP3 sebelum BE → WIN +150 (bonus)", () => {
+    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3016, 3002)] })).toMatchObject({ outcome: "win", tpHit: 3, pips: 150 });
   });
   it("grade dari skor", () => {
     expect([gradeOf(85), gradeOf(72), gradeOf(61), gradeOf(40), gradeOf(null)]).toEqual(["A+", "A", "B", "C", null]);

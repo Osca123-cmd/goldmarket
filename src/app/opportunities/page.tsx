@@ -335,7 +335,7 @@ function LiveSignal() {
           ))
         )}
         <p className="px-5 py-3 text-[11px] text-muted">
-          WIN = TP tertinggi tersentuh sebelum SL; LOSS = SL sebelum TP1; SL &amp; TP dalam candle yang sama dihitung SL. Hasil level sinyal menurut feed ({snapshot?.source_label ?? "—"}), belum termasuk spread/komisi, dan bukan transaksi Anda. Tidak menjamin hasil mendatang.
+          Setelah TP1, SL dipindah ke entry (BE). WIN = TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry / TP3 / 24 jam; LOSS = SL sebelum TP1; SL &amp; TP dalam candle yang sama dihitung SL. Hasil level sinyal menurut feed ({snapshot?.source_label ?? "—"}), belum termasuk spread/komisi, dan bukan transaksi Anda. Tidak menjamin hasil mendatang.
         </p>
       </HistoryPanel>
       <Disclaimer />

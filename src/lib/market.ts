@@ -218,10 +218,10 @@ export function useSetups(days = 3) {
   }, 30000);
 }
 
-/** Sinyal masih aktif: belum tersentuh, atau tersentuh tetapi hasil TP/SL belum final. */
-export function isActiveSignal(s: Pick<SetupRow, "status" | "outcome">): boolean {
+/** Sinyal masih aktif: belum tersentuh, atau tersentuh tetapi belum ada TP. Setelah TP1 (SL di BE) setup tidak berlaku untuk entry baru. */
+export function isActiveSignal(s: Pick<SetupRow, "status" | "outcome" | "outcome_tp">): boolean {
   if (s.status === "approaching" || s.status === "awaiting_confirmation") return true;
-  return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open");
+  return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open") && !(s.outcome_tp ?? 0);
 }
 
 /** Sinyal berjalan: entry sudah tersentuh, hasil TP/SL belum final — selalu ditampilkan (sudah dinotifikasi). */

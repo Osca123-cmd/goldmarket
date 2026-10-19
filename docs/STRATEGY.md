@@ -120,7 +120,9 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 ## 10. Riwayat sinyal (hasil menurut feed) — terpisah dari jurnal
 
 `evaluateOutcome` (`src/core/outcome.ts`) dijalankan engine tiap menit untuk setup layak yang entry-nya tersentuh:
-- **WIN**: minimal TP1 tersentuh sebelum SL. Hasil = pips TP tertinggi yang tersentuh sebelum SL / TP3 / batas waktu.
+- **Manajemen BE**: setelah TP1 tersentuh, SL dipindah ke entry (break-even) dan notifikasi "TP1 tersentuh — geser SL ke BE" dikirim (juga untuk TP2). Setup itu tidak lagi tampil sebagai peluang aktif (tidak berlaku untuk entry baru), hanya di Riwayat Sinyal.
+- **WIN**: minimal TP1 tersentuh. Sinyal ditutup saat harga kembali ke entry (BE), TP3 tersentuh (bonus), atau batas waktu. Hasil = pips TP tertinggi yang tersentuh.
+- TP pertama dan entry dalam candle M5 yang sama → urutan tidak diketahui; dihitung TP1 lalu BE (konservatif).
 - **LOSS**: SL tersentuh sebelum TP1 (−pips SL).
 - Waktu entry tersentuh = awal candle M5 pertama (setelah setup dibuat) yang menyentuh entry, atau waktu tick harga bila tick lebih dulu. Candle M15 Twelve Data baru masuk saat bar tutup, jadi tidak dipakai sebagai waktu.
 - TP di candle M5 tempat entry tersentuh tidak dihitung (harga itu bisa terjadi sebelum entry); SL di candle itu tetap dihitung.
