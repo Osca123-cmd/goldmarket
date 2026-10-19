@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { Card, Confirm, Disclaimer, DirBadge, Empty, Field, Stat, cx, fmt, fmtMoney, fmtTime, useNow } from "@/components/ui";
-import { HistoryPanel, HistoryRow, relTime } from "@/components/SignalHistory";
+import { HistoryPanel, HistoryRow, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { useSignalHistory } from "@/lib/market";
 import { gradeOf } from "@/core/outcome";
 import { classify } from "@/core/stats";
@@ -195,16 +195,14 @@ function Journal() {
             <p className="px-5 py-8 text-center text-sm text-muted">Belum ada riwayat sinyal.</p>
           ) : (
             signals.map((h) => (
-              <HistoryRow
+              <SignalHistoryItem
                 key={h.id}
-                direction={h.direction}
-                timeframe={h.timeframe}
+                s={h}
+                tz={tz}
                 grade={gradeOf(h.score)}
                 time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`}
-                result={h.outcome === "open" || !h.outcome ? "open" : h.outcome}
-                pips={h.outcome === "open" ? null : h.outcome_pips}
-                sub={
-                  <a className="text-gold hover:underline" href={`?fromSetup=${h.id}`} onClick={(e) => { e.preventDefault(); startFromSetup(h.id); }}>
+                extra={
+                  <a className="text-xs text-gold hover:underline" href={`?fromSetup=${h.id}`} onClick={(e) => { e.preventDefault(); startFromSetup(h.id); }}>
                     Catat sebagai transaksi saya →
                   </a>
                 }

@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Card, Disclaimer, Empty, StatusBadge, ago, cx, fmt, fmtTime, useNow } from "@/components/ui";
 import { LogoMark } from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus, fetchCandles, isActiveSignal, useEconEvents } from "@/lib/market";
+import { effectiveStatus, fetchCandles, isActiveSignal, isRunningSignal, useEconEvents } from "@/lib/market";
 import { NextEvent } from "@/components/NextEvent";
 import { ANALYSIS_STATUS_LABEL } from "@/core/analysis";
 
@@ -124,7 +124,8 @@ function Dashboard() {
   const now = useNow(1000);
   const status = effectiveStatus(snapshot, now);
   const up = (snapshot?.day_change ?? 0) >= 0;
-  const active = setups.filter((s) => s.eligible && isActiveSignal(s) && s.score >= (settings?.min_score?.[s.timeframe] ?? 60));
+  // sinyal berjalan selalu tampil walau skornya di bawah minimum (notifikasinya sudah terkirim)
+  const active = setups.filter((s) => s.eligible && isActiveSignal(s) && (isRunningSignal(s) || s.score >= (settings?.min_score?.[s.timeframe] ?? 60)));
   const { data: events } = useEconEvents();
   const nextEvent = (events ?? []).find((e) => e.topic && Date.parse(e.time_at) > now) ?? null;
 

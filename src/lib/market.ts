@@ -224,6 +224,11 @@ export function isActiveSignal(s: Pick<SetupRow, "status" | "outcome">): boolean
   return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open");
 }
 
+/** Sinyal berjalan: entry sudah tersentuh, hasil TP/SL belum final — selalu ditampilkan (sudah dinotifikasi). */
+export function isRunningSignal(s: Pick<SetupRow, "status" | "outcome">): boolean {
+  return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open");
+}
+
 /** Riwayat sinyal: setup yang entry-nya tersentuh menurut feed beserta hasilnya. */
 export function useSignalHistory(limit = 100) {
   return useLive<SetupRow[]>(`history:${limit}`, "setups", async () => {

@@ -5,11 +5,11 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SetupCard } from "@/components/SetupCard";
-import { HistoryPanel, HistoryRow, relTime } from "@/components/SignalHistory";
+import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus, isActiveSignal, useSignalHistory, type AnalysisRow, type Snapshot } from "@/lib/market";
+import { effectiveStatus, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow, type Snapshot } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
 import { STRATEGY_LABEL } from "@/core/config";
 import { gradeOf } from "@/core/outcome";
@@ -178,7 +178,7 @@ function LiveSignal() {
         if (f.tf && s.timeframe !== f.tf) return false;
         if (f.strategy && s.strategy !== f.strategy) return false;
         const min = f.minScore === "" ? (settings?.min_score?.[s.timeframe] ?? 60) : Number(f.minScore);
-        if (s.score < min) return false;
+        if (s.score < min && !isRunningSignal(s)) return false; // sinyal berjalan selalu tampil
         if (f.session && (s.session ?? "off") !== f.session) return false;
         if (f.status === "active" && !isActiveSignal(s)) return false;
         if (f.status && f.status !== "active" && f.status !== "all" && s.status !== f.status) return false;
@@ -221,7 +221,7 @@ function LiveSignal() {
           <h1 className="text-xs font-bold uppercase tracking-[0.2em] text-ink/80">Live Signal</h1>
         </header>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
-          <span className="rounded-full bg-gradient-to-r from-gold-strong to-gold-deep px-5 py-2 text-sm font-extrabold tracking-wide text-bg shadow-[0_0_24px_rgba(232,184,76,.35)]">INTRADAY · M15 / H1</span>
+          <span className="rounded-full bg-gradient-to-r from-gold-strong to-gold-deep px-5 py-2 text-sm font-extrabold tracking-wide text-bg shadow-[0_0_24px_rgba(232,184,76,.35)]">INTRADAY · M15 / M30</span>
           <MonitorBadge m={mon} />
         </div>
 
@@ -327,16 +327,7 @@ function LiveSignal() {
           <p className="px-5 py-8 text-center text-sm text-muted">Belum ada sinyal yang entry-nya tersentuh. Riwayat terisi otomatis dari engine.</p>
         ) : (
           hist.map((h) => (
-            <HistoryRow
-              key={h.id}
-              direction={h.direction}
-              timeframe={h.timeframe}
-              grade={gradeOf(h.score)}
-              time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`}
-              result={h.outcome === "open" || !h.outcome ? "open" : h.outcome}
-              pips={h.outcome === "open" ? null : h.outcome_pips}
-              sub={h.outcome_note ?? undefined}
-            />
+            <SignalHistoryItem key={h.id} s={h} tz={tz} grade={gradeOf(h.score)} time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`} />
           ))
         )}
         <p className="px-5 py-3 text-[11px] text-muted">
