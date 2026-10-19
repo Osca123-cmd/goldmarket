@@ -61,7 +61,7 @@ Konfirmasi hanya memakai **candle tertutup** (`closedAsOf`). Harga intrabar dipa
 4. Area retest = level −0,15/+0,25 ATR (BUY); invalidasi = level ∓ 0,6 ATR.
 
 ### Strategi riset (hanya backtest; live hanya bila terbukti & disetujui)
-- **Liquidity sweep** (`detectLiquiditySweep`): candle konteks menembus high/low hari sebelumnya, range Asia, atau swing lalu menutup kembali ke dalam; entry retest level yang direbut, invalidasi di luar ujung sweep.
+- **Liquidity sweep** (`detectLiquiditySweep`): candle konteks menembus high/low hari sebelumnya, range Asia, atau swing lalu menutup kembali ke dalam; entry retest level yang direbut, invalidasi di luar ujung sweep. Live sebagai **Eksperimen** sejak 19 Okt 2026 atas permintaan pengguna (backtest XAU/USD ±5 minggu: +8,2 pips/trade varian C); SL/TP sama dengan rencana per TF, tidak diubah.
 - **Supply/Demand reversal** (`detectSdReversal`): hanya saat **H4 ranging**; SELL di resistance (supply) ≥ 2 sentuhan di atas harga, BUY di support (demand) di bawah harga — boleh melawan bias H1. Area −0,25/+0,1 ATR (SELL), invalidasi = level ± 0,35 ATR (zona ditembus = ide pantulan batal; SL selalu di sisi yang benar). Aktif di live sebagai **eksperimen** (berlabel) sejak 19 Okt 2026 atas permintaan pengguna.
 
 ### Jenis entry (ditetapkan saat setup dibuat, tidak berubah)

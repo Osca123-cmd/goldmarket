@@ -362,7 +362,7 @@ export function detectBreakoutRetest(direction: Direction, pair: TfPair, c: Dete
  * Liquidity sweep: candle konteks menembus high/low hari sebelumnya, range Asia,
  * atau swing terakhir (mengambil stop), lalu MENUTUP kembali di dalam level.
  * Setup = retest level yang direbut kembali, searah pembalikan. Invalidasi di
- * luar ujung sweep. (Riset: aktif di backtest; sinyal live hanya bila terbukti.)
+ * luar ujung sweep. Live sebagai EKSPERIMEN sejak 19 Okt 2026 (SL/TP sama dengan rencana per TF).
  */
 export function detectLiquiditySweep(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   const ctx = c.analysis.tfs[pair.context];

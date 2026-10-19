@@ -106,11 +106,11 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
 }
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
-export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal"];
+export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep"];
 
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
   trend_pullback: "Trend pullback",
-  liquidity_sweep: "Liquidity sweep",
+  liquidity_sweep: "Liquidity sweep (Eksperimen)",
   sd_reversal: "Supply/Demand reversal (Eksperimen)",
   breakout_retest: "Breakout retest",
 };
