@@ -38,7 +38,7 @@ export interface SetupRow {
   expires_at: string;
   updated_at: string;
   direction: "BUY" | "SELL";
-  strategy: "trend_pullback" | "breakout_retest" | "liquidity_sweep";
+  strategy: "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal";
   timeframe: Timeframe;
   confirm_tf: Timeframe;
   entry_type: "market" | "limit" | "stop";

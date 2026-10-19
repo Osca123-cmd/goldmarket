@@ -140,12 +140,22 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
 
   const gates: Gate[] = [];
   gates.push({ key: "data", label: "Kualitas data", pass: true, note: "Lolos validasi data sebelum deteksi." });
-  const structOk = d.invalidation != null && !opposite(c.analysis.mainBias, d.direction);
+  // sd_reversal sengaja dua arah, tetapi hanya saat H4 ranging (dicek di detektornya)
+  const counterOk = d.strategy === "sd_reversal" && c.analysis.tfs.H4?.bias === "ranging";
+  const biasOpposite = opposite(c.analysis.mainBias, d.direction) && !counterOk;
+  const structOk = d.invalidation != null && !biasOpposite;
   gates.push({
     key: "structure",
     label: "Struktur",
     pass: structOk,
-    note: d.invalidation == null ? "Tidak ada level invalidasi struktur yang jelas." : opposite(c.analysis.mainBias, d.direction) ? "Bias utama berlawanan." : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
+    note:
+      d.invalidation == null
+        ? "Tidak ada level invalidasi struktur yang jelas."
+        : biasOpposite
+          ? "Bias utama berlawanan."
+          : counterOk
+            ? "Invalidasi struktur terdefinisi; H4 ranging sehingga reversal dua arah diizinkan."
+            : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
   });
   let invOk = false;
   let invNote = "Tidak ada invalidasi.";
@@ -408,6 +418,55 @@ export function detectLiquiditySweep(direction: Direction, pair: TfPair, c: Dete
   return null;
 }
 
+/**
+ * Supply/Demand reversal: saat H4 ranging, harga mendekati level ≥2 sentuhan dari
+ * arah berlawanan (resistance di atas = supply → SELL, support di bawah = demand → BUY)
+ * dan diharapkan memantul; konfirmasi candle pembalikan di TF konfirmasi menambah skor.
+ * Invalidasi di luar level (0,6× ATR). Dua arah, boleh melawan bias H1. (Riset.)
+ */
+export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  if (!ctx || confCandles.length < 3) return null;
+  if (c.analysis.tfs.H4?.bias !== "ranging") return null;
+  const s = sgn(direction);
+  const a = ctx.atr;
+  // BUY: support di bawah/di sekitar harga; SELL: resistance di atas/di sekitar harga
+  const L = ctx.levels
+    .filter((l) => l.touches >= 2 && l.kind === (direction === "BUY" ? "support" : "resistance") && s * (c.price - l.price) >= -0.25 * a)
+    .sort((x, y) => Math.abs(x.price - c.price) - Math.abs(y.price - c.price))[0];
+  if (!L) return null;
+  const zoneLow = direction === "BUY" ? L.price - 0.1 * a : L.price - 0.25 * a;
+  const zoneHigh = direction === "BUY" ? L.price + 0.25 * a : L.price + 0.1 * a;
+  const edge = direction === "BUY" ? zoneHigh : zoneLow;
+  if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+  const invalidation = L.price - s * 0.6 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const reasons = [
+    ...c.analysis.reasons,
+    `H4 ranging: reversal dua arah di zona ${direction === "BUY" ? "demand (support)" : "supply (resistance)"} ${L.price.toFixed(2)} (${L.touches}× sentuhan) ${pair.context}.`,
+    `Area entry ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi bila harga menembus ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "sd_reversal",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: L.touches,
+      anchor: `sd:${L.price.toFixed(2)}`,
+      confirmCandles: confCandles,
+      confirmAfter: 0,
+      reasons,
+    },
+    c,
+  );
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -423,6 +482,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("liquidity_sweep")) {
         const l = detectLiquiditySweep(dir, pair, c);
         if (l) out.push(l);
+      }
+      if (c.config.strategies.includes("sd_reversal")) {
+        const r = detectSdReversal(dir, pair, c);
+        if (r) out.push(r);
       }
     }
   }

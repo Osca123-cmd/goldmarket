@@ -896,7 +896,7 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-22.2"; // .2: riset toleransi invalidasi (BT_INV_TOL_PIPS)
+const STRATEGY_CODE_VERSION = "2026-10-22.3"; // .3: riset sd_reversal (dua arah saat H4 ranging)
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE_LABEL: Record<string, string> = {
@@ -904,7 +904,7 @@ const BT_SOURCE_LABEL: Record<string, string> = {
   binance_paxg: "Binance — PAXG/USDT (proxy emas), jam pasar emas",
 };
 /** strategi yang ikut disimulasikan untuk RISET (tidak tampil di ringkasan/probabilitas live) */
-const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep"];
+const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep", "sd_reversal"];
 /** toleransi invalidasi yang ikut disimulasikan untuk RISET; ringkasan live hanya memakai trade dengan invSlackPips ≤ toleransi live */
 const BT_INV_TOL_PIPS = 5;
 

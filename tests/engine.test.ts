@@ -218,3 +218,26 @@ describe("gate SL vs invalidasi + toleransi", () => {
     expect(DEFAULT_ENGINE_CONFIG.invalidationTolPips).toBe(0);
   });
 });
+
+describe("strategi supply/demand reversal (riset)", () => {
+  it("hanya muncul saat H4 ranging; boleh melawan bias H1; invalidasi di sisi SL; level sesuai rencana TF", () => {
+    const cfg = { ...DEFAULT_ENGINE_CONFIG, strategies: ["sd_reversal" as const] };
+    const found: { c: SetupCandidate; h4: string }[] = [];
+    for (let t = T0; t < T0 + 10 * 86400 && found.length < 5; t += 900) {
+      const out = runEngineCycle(input(t, { config: cfg }));
+      for (const c of out.created) found.push({ c, h4: out.analysis.tfs.H4?.bias ?? "" });
+    }
+    expect(found.length).toBeGreaterThan(0);
+    for (const { c, h4 } of found) {
+      const s = c.direction === "BUY" ? 1 : -1;
+      expect(c.strategy).toBe("sd_reversal");
+      expect(h4).toBe("ranging");
+      expect(s * (c.entry - c.invalidation)).toBeGreaterThan(0);
+      expect(c.slPips).toBe(planFor(DEFAULT_ENGINE_CONFIG, c.timeframe).slPips);
+    }
+  }, 180_000);
+
+  it("tidak aktif di sinyal live secara default", () => {
+    expect(DEFAULT_ENGINE_CONFIG.strategies).not.toContain("sd_reversal");
+  });
+});
