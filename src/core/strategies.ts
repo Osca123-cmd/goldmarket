@@ -460,7 +460,7 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
       zoneHigh,
       invalidation,
       levelTouches: L.touches,
-      anchor: `sd:${L.price.toFixed(2)}`,
+      anchor: `sd:${L.price.toFixed(2)}@${L.lastTime}`, // sentuhan baru pada level = setup baru
       confirmCandles: confCandles,
       confirmAfter: 0,
       reasons,
