@@ -247,6 +247,5 @@ describe("label eksperimen", () => {
     expect(readyTitle("SELL", "M15", "", "sd_reversal")).toBe("🔴 READY SELL XAUUSD — M15 · 🧪 Eksperimen");
     expect(readyTitle("BUY", "H1", " · 12.0 pips lagi", "breakout_retest")).toBe("🟢 READY BUY XAUUSD — H1 · 12.0 pips lagi");
     expect(readyTitle("BUY", "M15", "", "liquidity_sweep")).toBe("🟢 READY BUY XAUUSD — M15 · 🧪 Eksperimen");
-    expect(readyTitle("SELL", "M15", " · ⚠️ Bertentangan", "sd_reversal")).toBe("🔴 READY SELL XAUUSD — M15 · 🧪 Eksperimen · ⚠️ Bertentangan");
   });
 });

@@ -25,8 +25,9 @@ export interface StoredSetup {
   eligible: boolean;
   confirmed_at_sec: number | null;
   entry_touched_at_sec: number | null;
-  /** hasil sinyal menurut feed (untuk deteksi sinyal bertentangan) */
+  /** hasil sinyal menurut feed & TP tertinggi tercapai (untuk aturan pengiriman 1 sinyal sekaligus) */
   outcome?: string | null;
+  outcome_tp?: number | null;
 }
 
 export type DedupeVerdict = { ok: true } | { ok: false; reason: string };

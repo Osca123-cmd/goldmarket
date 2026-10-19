@@ -1,4 +1,4 @@
-import type { StrategyId, Timeframe } from "./types.ts";
+import type { EntryType, StrategyId, Timeframe } from "./types.ts";
 import { DEFAULT_PIP_PLAN, DEFAULT_XAUUSD, type InstrumentSpec, type PipPlan } from "./instrument.ts";
 import { DEFAULT_THRESHOLDS, type QualityThresholds } from "./dataQuality.ts";
 
@@ -44,6 +44,24 @@ export interface EngineConfig {
   newsBlackoutMin: number;
   /** SL tetap boleh berada maks. N pips di dalam invalidasi struktur (0 = ketat). Riset di backtest dulu sebelum dinaikkan untuk live. */
   invalidationTolPips: number;
+  /** aturan PENGIRIMAN sinyal live (bukan deteksi; tidak memengaruhi backtest). Tidak diisi = nonaktif. */
+  delivery?: DeliveryRules;
+}
+
+/** Jendela jam lokal dengan aturan khusus, mis. 14.00–17.00 WIB: hanya stop/market, maks 1 sinyal per hari. */
+export interface DeliveryWindow {
+  label: string;
+  startHour: number;
+  endHour: number;
+  utcOffsetHours: number;
+  entryTypes: EntryType[];
+  maxPerDay: number;
+}
+
+export interface DeliveryRules {
+  /** hanya 1 sinyal hidup sekaligus (READY belum kena entry, atau berjalan sebelum TP1) */
+  oneAtATime?: boolean;
+  windows?: DeliveryWindow[];
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {

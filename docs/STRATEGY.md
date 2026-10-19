@@ -117,8 +117,13 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 - 60% awal data = pengembangan, 40% akhir = pengujian. Yang ditampilkan hanya data uji, dengan n, periode, dan interval Wilson 95%.
 - Ditampilkan hanya bila n uji ≥ 30 (entry dan TP1). Jika tidak: “Probabilitas belum tersedia — validasi historis belum memadai.”
 
-### Sinyal bertentangan (peringatan, tidak memblokir)
-Dua setup **arah berlawanan** yang sama-sama masih hidup (menunggu entry atau sedang berjalan) dengan entry berdekatan (≤ jarak SL terbesar keduanya) diberi label **⚠️ Bertentangan** di kartu, alasan setup, notifikasi READY, dan notifikasi entry tersentuh (`src/core/conflict.ts`). Keduanya tetap dikirim dan dilacak; pengguna memilih salah satu. Contoh 19 Okt: BUY M30 4172,15 (support) dan SELL M15 4172,87 (support yang ditembus menjadi resistance).
+### Aturan pengiriman sinyal live (`src/core/delivery.ts`, `engine_state.config.delivery`)
+Permintaan pengguna 19 Okt 2026, setelah volatilitas tiba-tiba saat pembukaan London. Hanya mengatur **pengiriman** — deteksi, SL/TP/RR, dan backtest tidak berubah; kandidat yang ditahan tidak disimpan sehingga bisa muncul lagi bila masih valid.
+- **1 sinyal sekaligus**: tidak ada sinyal baru selama masih ada READY layak yang belum kena entry, atau sinyal berjalan yang belum TP1. Setelah TP1 (SL di BE), selesai, batal, atau kedaluwarsa, sinyal berikutnya boleh dikirim.
+- **14.00–17.00 WIB**: hanya entry **stop** dan **market** (limit tidak dikirim), dan maks **1 sinyal per hari** di jendela itu.
+
+### Sinyal yang dikecualikan
+Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded_reason`). Sinyal itu **tidak pernah dihapus**: tetap tampil di Riwayat Sinyal dengan badge DIKECUALIKAN dan alasannya, dan jumlahnya selalu ditampilkan di statistik.
 
 ## 10. Riwayat sinyal (hasil menurut feed) — terpisah dari jurnal
 

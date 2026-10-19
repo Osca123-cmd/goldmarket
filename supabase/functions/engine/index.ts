@@ -244,6 +244,7 @@ function toStored(r: Record<string, any>): StoredSetup {
     confirmed_at_sec: sec(r.confirmed_at),
     entry_touched_at_sec: sec(r.entry_touched_at),
     outcome: r.outcome ?? null,
+    outcome_tp: r.outcome_tp ?? null,
   };
 }
 
@@ -981,6 +982,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
     invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
     minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
+    // aturan pengiriman live tidak disimulasikan; undefined → tidak masuk hash versi
+    delivery: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);

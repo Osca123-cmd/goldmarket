@@ -56,6 +56,7 @@ function SignalStatsPage() {
       </div>
 
       {s.closed > 0 && s.closed < 30 && <p className="rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs text-warn">• Sampel kecil ({s.closed} sinyal selesai); statistik belum stabil.</p>}
+      {s.excluded > 0 && <p className="text-xs text-muted">{s.excluded} sinyal dikecualikan oleh pengguna — tetap terlihat di Riwayat Sinyal dengan alasannya, tidak dihitung di angka di bawah.</p>}
 
       {s.closed === 0 ? (
         <Empty title="Belum ada sinyal selesai">Sinyal berjalan: {s.running}. Statistik terisi otomatis begitu sinyal pertama ditutup (WIN/LOSS/TIMEOUT).</Empty>
@@ -98,6 +99,7 @@ function SignalStatsPage() {
         <ul className="list-disc space-y-1 pl-4 text-xs text-muted">
           <li>Terisi otomatis dari engine: setiap sinyal yang entry-nya tersentuh dilacak sampai selesai. Tidak perlu input jurnal.</li>
           <li>Setelah TP1, SL dipindah ke entry (BE). WIN = pips TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry, TP3, atau 24 jam. LOSS = SL sebelum TP1.</li>
+          <li>Sinyal yang dikecualikan pengguna tidak dihitung; jumlahnya selalu ditampilkan dan sinyalnya tetap ada di Riwayat Sinyal beserta alasannya.</li>
           <li>Win rate = WIN ÷ (WIN + LOSS). TIMEOUT (24 jam tanpa TP1/SL) tidak masuk menang/kalah, tetapi pips-nya ikut dijumlah.</li>
           <li>Pips level sinyal menurut feed, belum termasuk spread/komisi/slippage — bukan hasil transaksi Anda. Hasil transaksi nyata ada di tab Jurnal saya.</li>
           <li>Drawdown = penurunan terbesar dari puncak kurva pips kumulatif (urut waktu tutup). Kalender memakai tanggal tutup di zona {tz}.</li>

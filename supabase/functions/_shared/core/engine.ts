@@ -6,7 +6,7 @@ import { assessQuality, closedAsOf, type QualityReport } from "./dataQuality.ts"
 import { detectAll, type SetupCandidate } from "./strategies.ts";
 import { dedupeBatch, dedupeCandidate, evaluateStatus, type StoredSetup } from "./setups.ts";
 import { priceToPips } from "./instrument.ts";
-import { conflictText, findConflicts } from "./conflict.ts";
+import { deliveryBlock } from "./delivery.ts";
 import { sessionAt } from "./sessions.ts";
 
 export type NotificationKind = "new_setup" | "confirmed" | "entry_touched" | "invalid" | "expired" | "connection" | "signal_result" | "news_event";
@@ -112,8 +112,6 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       ? `Rilis ${i.newsBlackout.title} ${i.newsBlackout.timeSec > i.nowSec ? `dalam ${Math.max(1, Math.round((i.newsBlackout.timeSec - i.nowSec) / 60))} menit` : "baru saja"} — setup baru ditahan ±${cfg.newsBlackoutMin} menit di sekitar rilis.`
       : null;
   const rejected: EngineOutput["rejected"] = [];
-  // setup tersimpan + yang dibuat siklus ini (dedupe & deteksi sinyal bertentangan)
-  const known: StoredSetup[] = [...i.existing];
 
   // Sinyal baru HANYA bila data lolos validasi (tidak basi, tidak ada candle hilang, koneksi sehat).
   if (quality.ok && i.price != null && i.feedStatus !== "market_closed") {
@@ -121,7 +119,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       detectAll({ analysis, candles: closed, price: i.price, spreadPips: spread, nowSec: i.nowSec, dataTime: i.quoteTimeSec ?? i.nowSec, config: cfg }),
       cfg,
     );
-    const pool = known;
+    const pool = [...i.existing];
     for (const c of cands) {
       if (blackoutReason) {
         rejected.push({ identityKey: c.identityKey, reason: blackoutReason });
@@ -130,6 +128,12 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       const v = dedupeCandidate(c, pool, cfg);
       if (!v.ok) {
         rejected.push({ identityKey: c.identityKey, reason: v.reason });
+        continue;
+      }
+      // aturan pengiriman (1 sinyal sekaligus, jendela jam): kandidat terbaik lebih dulu (dedupeBatch urut skor)
+      const held = c.eligible ? deliveryBlock(c, pool, cfg, i.nowSec) : null;
+      if (held) {
+        rejected.push({ identityKey: c.identityKey, reason: held });
         continue;
       }
       created.push(c);
@@ -154,15 +158,11 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
         entry_touched_at_sec: null,
       });
       if (c.eligible) {
-        // peringatan saja: setup tetap dikirim, pengguna memilih salah satu
-        const vs = findConflicts({ id: c.identityKey, direction: c.direction, timeframe: c.timeframe, entry_price: c.entry, sl: c.sl, status: "approaching", eligible: true }, pool);
-        const warn = vs.length ? `⚠️ Bertentangan dengan ${vs.map(conflictText).join(", ")} — dua arah di harga berdekatan; pilih salah satu, jangan ambil keduanya.` : "";
-        if (warn) c.reasons.push(warn);
         notifications.push({
           kind: "new_setup",
           dedupeKey: `new:${c.identityKey}`,
-          title: readyTitle(c.direction, c.timeframe, vs.length ? " · ⚠️ Bertentangan" : "", c.strategy),
-          body: `Zona ${c.entryLow.toFixed(2)}–${c.entryHigh.toFixed(2)} · entry ${c.entryType} ${c.entry.toFixed(2)} · SL ${c.sl.toFixed(2)} · TP1 ${c.tp1.toFixed(2)} · TP2 ${c.tp2.toFixed(2)} · TP3 ${c.tp3.toFixed(2)} · skor ${c.score.total}/100. Siapkan rencana; tunggu harga masuk zona & konfirmasi.${warn ? ` ${warn}` : ""}`,
+          title: readyTitle(c.direction, c.timeframe, "", c.strategy),
+          body: `Zona ${c.entryLow.toFixed(2)}–${c.entryHigh.toFixed(2)} · entry ${c.entryType} ${c.entry.toFixed(2)} · SL ${c.sl.toFixed(2)} · TP1 ${c.tp1.toFixed(2)} · TP2 ${c.tp2.toFixed(2)} · TP3 ${c.tp3.toFixed(2)} · skor ${c.score.total}/100. Siapkan rencana; tunggu harga masuk zona & konfirmasi.`,
           setupIdentity: c.identityKey,
           severity: "info",
           score: c.score.total,
@@ -194,11 +194,8 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     for (const ev of upd.events) {
       if (ev === "confirmed")
         notifications.push({ kind: "confirmed", dedupeKey: `confirmed:${s.id}`, title: `✅ KONFIRMASI ${s.direction} XAUUSD — ${s.timeframe}`, body: `Candle ${s.confirm_tf} tertutup mengonfirmasi area ${s.entry_low.toFixed(2)}–${s.entry_high.toFixed(2)}.`, setupId: s.id, severity: "success", timeframe: s.timeframe });
-      if (ev === "entry_touched") {
-        const vs = findConflicts({ ...s, status: "entry_touched", outcome: "open" }, known);
-        const warn = vs.length ? ` ⚠️ Bertentangan dengan ${vs.map(conflictText).join(", ")} — pilih salah satu, jangan ambil keduanya.` : "";
-        notifications.push({ kind: "entry_touched", dedupeKey: `touched:${s.id}`, title: `🎯 ZONA ENTRY TERSENTUH — ${s.direction} XAUUSD ${s.timeframe}${vs.length ? " · ⚠️ Bertentangan" : ""}`, body: `Harga feed menyentuh ${s.entry_price.toFixed(2)}. Ini bukan konfirmasi bahwa Anda membuka posisi.${warn}`, setupId: s.id, severity: "info", timeframe: s.timeframe });
-      }
+      if (ev === "entry_touched")
+        notifications.push({ kind: "entry_touched", dedupeKey: `touched:${s.id}`, title: `🎯 ZONA ENTRY TERSENTUH — ${s.direction} XAUUSD ${s.timeframe}`, body: `Harga feed menyentuh ${s.entry_price.toFixed(2)}. Ini bukan konfirmasi bahwa Anda membuka posisi.`, setupId: s.id, severity: "info", timeframe: s.timeframe });
       if (ev === "invalid")
         notifications.push({ kind: "invalid", dedupeKey: `invalid:${s.id}`, title: `❌ SETUP BATAL (invalid) — ${s.direction} XAUUSD ${s.timeframe}`, body: upd.reason, setupId: s.id, severity: "danger", timeframe: s.timeframe });
       if (ev === "expired")

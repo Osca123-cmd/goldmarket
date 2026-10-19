@@ -19,4 +19,4 @@ export * from "./engine.ts";
 export * from "./outcome.ts";
 export * from "./news.ts";
 export * from "./features.ts";
-export * from "./conflict.ts";
+export * from "./delivery.ts";

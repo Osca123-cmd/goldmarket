@@ -75,6 +75,9 @@ export interface SetupRow {
   outcome_at: string | null;
   outcome_note: string | null;
   outcome_ambiguous: boolean;
+  /** dikecualikan pengguna dari statistik (tetap terlihat di riwayat beserta alasan) */
+  excluded?: boolean;
+  excluded_reason?: string | null;
 }
 
 export interface AnalysisRow {

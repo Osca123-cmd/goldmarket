@@ -6,7 +6,7 @@ import { cx, fmt } from "./ui";
 import { STRATEGY_LABEL } from "@/core/config";
 import { floatingPips, isRunningSignal, type SetupRow } from "@/lib/market";
 
-export type ResultKind = "win" | "loss" | "be" | "open" | "timeout" | "cancelled" | "running" | "tp1" | "tp2";
+export type ResultKind = "win" | "loss" | "be" | "open" | "timeout" | "cancelled" | "running" | "tp1" | "tp2" | "excluded";
 
 const RESULT: Record<ResultKind, { label: string; cls: string }> = {
   win: { label: "WIN", cls: "bg-buy/15 text-buy" },
@@ -18,6 +18,7 @@ const RESULT: Record<ResultKind, { label: string; cls: string }> = {
   running: { label: "RUNNING", cls: "bg-info/15 text-info" },
   tp1: { label: "TP1 ✓", cls: "bg-buy/15 text-buy" },
   tp2: { label: "TP2 ✓", cls: "bg-buy/15 text-buy" },
+  excluded: { label: "DIKECUALIKAN", cls: "bg-muted/15 text-muted" },
 };
 
 const GRADE: Record<string, string> = {
@@ -90,7 +91,7 @@ export function HistoryRow({
       </span>
       <span className="flex shrink-0 flex-col items-end gap-1">
         <span className={cx("rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-wide", r.cls)}>{r.label}</span>
-        <span className={cx("num text-sm font-bold", pips == null ? "text-muted" : pips > 0 ? "text-buy" : pips < 0 ? "text-sell" : "text-muted")}>
+        <span className={cx("num text-sm font-bold", result === "excluded" ? "text-muted line-through" : pips == null ? "text-muted" : pips > 0 ? "text-buy" : pips < 0 ? "text-sell" : "text-muted")}>
           {pips == null ? "—" : `${pips > 0 ? "+" : ""}${fmt(pips, 1)}`}
         </span>
         {pipsNote && <span className="text-[10px] text-muted">{pipsNote}</span>}
@@ -171,6 +172,7 @@ export function SignalDetails({ s, tz, price, extra }: { s: SetupRow; tz: string
         {cell("Entry tersentuh", t(s.entry_touched_at), "text-ink")}
       </div>
       {s.outcome_note && <p className="text-xs text-muted">{s.outcome_note}</p>}
+      {s.excluded && <p className="text-xs text-warn">Dikecualikan dari statistik: {s.excluded_reason ?? "atas permintaan pengguna"}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <Link className="btn-ghost inline-block px-3 py-1.5 text-xs" href={`/chart/?setup=${s.id}&tf=${s.timeframe}`}>
           Tampilkan di chart
@@ -215,7 +217,7 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
   const [open, setOpen] = useState(false);
   const running = isRunningSignal(s);
   const tpHit = s.outcome_tp ?? 0;
-  const result: ResultKind = running ? (tpHit >= 2 ? "tp2" : tpHit === 1 ? "tp1" : "running") : ((s.outcome ?? "open") as ResultKind);
+  const result: ResultKind = s.excluded ? "excluded" : running ? (tpHit >= 2 ? "tp2" : tpHit === 1 ? "tp1" : "running") : ((s.outcome ?? "open") as ResultKind);
   const pip = s.pip_size || 0.1;
   const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
   // setelah TP1 SL di BE: yang ditampilkan pips TP yang sudah aman, floating ada di detail
@@ -230,7 +232,7 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
         result={result}
         pips={locked ?? (running ? float : s.outcome_pips)}
         pipsNote={locked != null ? "aman · SL di BE" : running ? "floating" : undefined}
-        sub={open ? "Ketuk untuk menutup detail" : running && s.outcome_note ? `${s.outcome_note} Ketuk untuk detail.` : "Ketuk untuk lihat entry, SL & TP"}
+        sub={open ? "Ketuk untuk menutup detail" : s.excluded ? `Tidak dihitung di statistik. ${s.excluded_reason ?? ""}` : running && s.outcome_note ? `${s.outcome_note} Ketuk untuk detail.` : "Ketuk untuk lihat entry, SL & TP"}
         onClick={() => setOpen((v) => !v)}
         active={open}
       />

@@ -6,6 +6,7 @@ import { ymd } from "./time.ts";
  * - Satu sinyal = satu hasil (pips TP tertinggi bila WIN, −SL bila LOSS, harga terakhir bila TIMEOUT).
  * - Win rate = WIN ÷ (WIN + LOSS); TIMEOUT tidak masuk menang/kalah tetapi pips-nya ikut dijumlah.
  * - Pips level sinyal menurut feed, tanpa spread/komisi — bukan transaksi pengguna.
+ * - Sinyal yang DIKECUALIKAN pengguna tidak dihitung (jumlahnya dilaporkan terpisah).
  */
 export interface SignalResultRow {
   direction: "BUY" | "SELL";
@@ -17,6 +18,7 @@ export interface SignalResultRow {
   outcome_tp: number | null;
   outcome_at: string | null;
   entry_touched_at: string | null;
+  excluded?: boolean;
 }
 
 export interface SignalGroup {
@@ -31,6 +33,8 @@ export interface SignalGroup {
 export interface SignalStats {
   closed: number;
   running: number;
+  /** sinyal selesai yang dikecualikan pengguna (tidak masuk angka mana pun) */
+  excluded: number;
   wins: number;
   losses: number;
   timeouts: number;
@@ -69,8 +73,9 @@ function group(rows: SignalResultRow[], keyOf: (r: SignalResultRow) => string): 
 
 export function computeSignalStats(rows: SignalResultRow[], tz: string): SignalStats {
   const running = rows.filter((r) => r.status === "entry_touched" && (r.outcome == null || r.outcome === "open")).length;
-  const closed = rows
-    .filter((r) => r.outcome != null && CLOSED.has(r.outcome))
+  const done = rows.filter((r) => r.outcome != null && CLOSED.has(r.outcome));
+  const closed = done
+    .filter((r) => !r.excluded)
     .sort((a, b) => Date.parse(a.outcome_at ?? a.entry_touched_at ?? "") - Date.parse(b.outcome_at ?? b.entry_touched_at ?? ""));
   const wins = closed.filter((r) => r.outcome === "win");
   const losses = closed.filter((r) => r.outcome === "loss");
@@ -103,6 +108,7 @@ export function computeSignalStats(rows: SignalResultRow[], tz: string): SignalS
   return {
     closed: closed.length,
     running,
+    excluded: done.length - closed.length,
     wins: wins.length,
     losses: losses.length,
     timeouts: closed.length - wins.length - losses.length,

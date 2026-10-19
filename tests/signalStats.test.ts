@@ -15,11 +15,12 @@ describe("statistik sinyal otomatis", () => {
     row({ outcome: "loss", outcome_pips: -50, outcome_tp: 0, outcome_at: "2026-10-20T02:00:00Z" }),
     row({ outcome: "timeout", outcome_pips: 12, outcome_tp: 0, outcome_at: "2026-10-20T03:00:00Z" }),
     row({ outcome: "open", outcome_pips: null, outcome_tp: 1, outcome_at: null }),
+    row({ outcome: "loss", outcome_pips: -70, outcome_tp: 0, timeframe: "M30", excluded: true, outcome_at: "2026-10-19T09:00:00Z" }),
   ];
   const s = computeSignalStats(rows, "Asia/Jakarta");
 
   it("menghitung win rate tanpa timeout dan memisahkan sinyal berjalan", () => {
-    expect(s).toMatchObject({ closed: 6, running: 1, wins: 2, losses: 3, timeouts: 1, winRate: 0.4 });
+    expect(s).toMatchObject({ closed: 6, running: 1, excluded: 1, wins: 2, losses: 3, timeouts: 1, winRate: 0.4 });
   });
   it("total, rata-rata, profit factor, drawdown, dan runtun kalah", () => {
     expect(s.totalPips).toBe(102);

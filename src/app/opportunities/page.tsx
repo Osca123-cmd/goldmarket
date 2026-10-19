@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SetupCard } from "@/components/SetupCard";
-import { findConflicts } from "@/core/conflict";
 import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
@@ -190,10 +189,12 @@ function LiveSignal() {
     [setups, f, settings],
   );
   const hist = history.data ?? [];
-  const closed = hist.filter((h) => h.outcome === "win" || h.outcome === "loss");
+  const counted = hist.filter((h) => !h.excluded);
+  const excludedCount = hist.length - counted.length;
+  const closed = counted.filter((h) => h.outcome === "win" || h.outcome === "loss");
   const wins = closed.filter((h) => h.outcome === "win").length;
-  const runningCount = hist.filter((h) => isRunningSignal(h)).length;
-  const totalPips = hist.reduce((a, h) => a + (h.outcome !== "open" ? (h.outcome_pips ?? 0) : 0), 0);
+  const runningCount = counted.filter((h) => isRunningSignal(h)).length;
+  const totalPips = counted.reduce((a, h) => a + (h.outcome !== "open" ? (h.outcome_pips ?? 0) : 0), 0);
 
   const title =
     feed === "market_closed" ? "Pasar Sedang Tutup" : analysis && !analysis.quality_ok ? "Sinyal Dijeda — Data Belum Valid" : !mon.active ? "Monitoring Terganggu" : "Menunggu Konfirmasi";
@@ -280,7 +281,7 @@ function LiveSignal() {
               <span className="text-sm font-semibold">{list.length} sinyal aktif · diperbarui realtime</span>
             </div>
             {list.map((s) => (
-              <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} conflicts={findConflicts(s, setups)} />
+              <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />
             ))}
           </div>
         )}
@@ -301,7 +302,7 @@ function LiveSignal() {
         </div>
         {f.status !== "active" && (
           <div className="mt-3 space-y-3">
-            {list.length === 0 ? <Empty title="Tidak ada peluang yang cocok">Ubah filter.</Empty> : list.map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} conflicts={findConflicts(s, setups)} />)}
+            {list.length === 0 ? <Empty title="Tidak ada peluang yang cocok">Ubah filter.</Empty> : list.map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />)}
           </div>
         )}
       </details>
@@ -323,6 +324,11 @@ function LiveSignal() {
               <span>
                 Total <strong className={cx("num", totalPips >= 0 ? "text-buy" : "text-sell")}>{totalPips >= 0 ? "+" : ""}{fmt(totalPips, 1)} pips</strong>
               </span>
+              {excludedCount > 0 && (
+                <span>
+                  Dikecualikan <strong className="num text-muted">{excludedCount}</strong>
+                </span>
+              )}
               {closed.length < 30 && <span className="text-warn">Sampel kecil — belum stabil</span>}
             </div>
           ) : undefined
