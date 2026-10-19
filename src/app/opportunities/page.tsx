@@ -191,6 +191,7 @@ function LiveSignal() {
   const hist = history.data ?? [];
   const closed = hist.filter((h) => h.outcome === "win" || h.outcome === "loss");
   const wins = closed.filter((h) => h.outcome === "win").length;
+  const runningCount = hist.filter((h) => isRunningSignal(h)).length;
   const totalPips = hist.reduce((a, h) => a + (h.outcome !== "open" ? (h.outcome_pips ?? 0) : 0), 0);
 
   const title =
@@ -307,13 +308,16 @@ function LiveSignal() {
       <HistoryPanel
         title="Signal History"
         summary={
-          closed.length ? (
+          closed.length || runningCount ? (
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
+              <span>
+                Berjalan <strong className="num text-info">{runningCount}</strong>
+              </span>
               <span>
                 Selesai <strong className="num text-ink">{closed.length}</strong>
               </span>
               <span>
-                Win rate <strong className="num text-ink">{fmt((wins / closed.length) * 100, 0)}%</strong> ({wins}W/{closed.length - wins}L)
+                Win rate <strong className="num text-ink">{closed.length ? `${fmt((wins / closed.length) * 100, 0)}%` : "—"}</strong> ({wins}W/{closed.length - wins}L)
               </span>
               <span>
                 Total <strong className={cx("num", totalPips >= 0 ? "text-buy" : "text-sell")}>{totalPips >= 0 ? "+" : ""}{fmt(totalPips, 1)} pips</strong>
@@ -327,7 +331,7 @@ function LiveSignal() {
           <p className="px-5 py-8 text-center text-sm text-muted">Belum ada sinyal yang entry-nya tersentuh. Riwayat terisi otomatis dari engine.</p>
         ) : (
           hist.map((h) => (
-            <SignalHistoryItem key={h.id} s={h} tz={tz} grade={gradeOf(h.score)} time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`} />
+            <SignalHistoryItem key={h.id} s={h} tz={tz} price={snapshot?.price ?? null} grade={gradeOf(h.score)} time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`} />
           ))
         )}
         <p className="px-5 py-3 text-[11px] text-muted">

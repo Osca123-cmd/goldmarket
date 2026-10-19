@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { cx, fmt } from "./ui";
 import { STRATEGY_LABEL } from "@/core/config";
-import type { SetupRow } from "@/lib/market";
+import { floatingPips, isRunningSignal, type SetupRow } from "@/lib/market";
 
-export type ResultKind = "win" | "loss" | "be" | "open" | "timeout" | "cancelled";
+export type ResultKind = "win" | "loss" | "be" | "open" | "timeout" | "cancelled" | "running" | "tp1" | "tp2";
 
 const RESULT: Record<ResultKind, { label: string; cls: string }> = {
   win: { label: "WIN", cls: "bg-buy/15 text-buy" },
@@ -15,6 +15,9 @@ const RESULT: Record<ResultKind, { label: string; cls: string }> = {
   open: { label: "OPEN", cls: "bg-info/15 text-info" },
   timeout: { label: "TIMEOUT", cls: "bg-warn/15 text-warn" },
   cancelled: { label: "BATAL", cls: "bg-muted/10 text-muted" },
+  running: { label: "RUNNING", cls: "bg-info/15 text-info" },
+  tp1: { label: "TP1 ✓", cls: "bg-buy/15 text-buy" },
+  tp2: { label: "TP2 ✓", cls: "bg-buy/15 text-buy" },
 };
 
 const GRADE: Record<string, string> = {
@@ -43,6 +46,7 @@ export function HistoryRow({
   sub,
   onClick,
   active,
+  pipsNote,
 }: {
   direction: "BUY" | "SELL";
   timeframe: string;
@@ -53,6 +57,8 @@ export function HistoryRow({
   sub?: ReactNode;
   onClick?: () => void;
   active?: boolean;
+  /** teks kecil di bawah angka pips (mis. "floating") */
+  pipsNote?: string;
 }) {
   const r = RESULT[result];
   const Tag = onClick ? "button" : "div";
@@ -87,6 +93,7 @@ export function HistoryRow({
         <span className={cx("num text-sm font-bold", pips == null ? "text-muted" : pips > 0 ? "text-buy" : pips < 0 ? "text-sell" : "text-muted")}>
           {pips == null ? "—" : `${pips > 0 ? "+" : ""}${fmt(pips, 1)}`}
         </span>
+        {pipsNote && <span className="text-[10px] text-muted">{pipsNote}</span>}
       </span>
     </Tag>
   );
@@ -112,7 +119,7 @@ export function HistoryPanel({ title, action, children, summary }: { title: stri
 const ENTRY_TYPE: Record<SetupRow["entry_type"], string> = { market: "Market", limit: "Limit", stop: "Stop" };
 
 /** Detail level sinyal (entry, SL, TP) — dibuka dengan mengetuk baris riwayat. */
-export function SignalDetails({ s, tz, extra }: { s: SetupRow; tz: string; extra?: ReactNode }) {
+export function SignalDetails({ s, tz, price, extra }: { s: SetupRow; tz: string; price: number | null; extra?: ReactNode }) {
   const t = (iso: string | null) => (iso ? new Date(iso).toLocaleString("id-ID", { timeZone: tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const cell = (label: string, value: string, tone = "text-ink", note?: string) => (
     <div className="rounded-xl bg-surface-2/60 px-3 py-2">
@@ -123,8 +130,28 @@ export function SignalDetails({ s, tz, extra }: { s: SetupRow; tz: string; extra
   );
   const pip = s.pip_size || 0.1;
   const dist = (p: number) => `${fmt(Math.abs(p - s.entry_price) / pip, 0)} pips`;
+  const running = isRunningSignal(s);
+  const tpHit = s.outcome_tp ?? 0;
+  const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
+  const locked = tpHit > 0 ? Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip : null;
   return (
     <div className="space-y-2 border-b border-line/70 bg-surface-2/20 px-3 py-3 sm:px-5">
+      {running && <ProgressLadder s={s} price={price} />}
+      {running && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <span>
+            Floating{" "}
+            <span className={cx("num font-bold", float == null ? "text-muted" : float >= 0 ? "text-buy" : "text-sell")}>
+              {float == null ? "—" : `${float > 0 ? "+" : ""}${fmt(float, 1)} pips`}
+            </span>
+          </span>
+          {locked != null && (
+            <span>
+              TP{tpHit} sudah tersentuh <span className="num font-bold text-buy">+{fmt(locked, 1)} pips</span>
+            </span>
+          )}
+        </div>
+      )}
       <div className="text-xs text-muted">
         {STRATEGY_LABEL[s.strategy]} · {s.timeframe} (konfirmasi {s.confirm_tf}) · skor {s.score}/100
       </div>
@@ -149,9 +176,42 @@ export function SignalDetails({ s, tz, extra }: { s: SetupRow; tz: string; extra
   );
 }
 
-/** Baris riwayat sinyal yang bisa diketuk untuk melihat level SL/TP. */
-export function SignalHistoryItem({ s, tz, time, grade, extra }: { s: SetupRow; tz: string; time: string; grade: string | null; extra?: ReactNode }) {
+/** Tangga level SL · Entry · TP1–TP3 dengan tanda TP yang sudah tersentuh dan posisi harga sekarang. */
+function ProgressLadder({ s, price }: { s: SetupRow; price: number | null }) {
+  const tpHit = s.outcome_tp ?? 0;
+  const d = s.direction === "BUY" ? 1 : -1;
+  const steps = [
+    { label: "SL", value: s.sl, done: false, tone: "text-sell" },
+    { label: "Entry", value: s.entry_price, done: true, tone: "text-ink" },
+    { label: "TP1", value: s.tp1, done: tpHit >= 1, tone: "text-buy" },
+    { label: "TP2", value: s.tp2, done: tpHit >= 2, tone: "text-buy" },
+    { label: "TP3", value: s.tp3, done: tpHit >= 3, tone: "text-buy" },
+  ];
+  // harga berada setelah level terakhir yang sudah dilewati searah posisi
+  const here = price == null ? -1 : steps.reduce((idx, st, i) => (d * (price - st.value) >= 0 ? i : idx), 0);
+  return (
+    <div className="grid grid-cols-5 gap-1 text-center">
+      {steps.map((st, i) => (
+        <div key={st.label} className={cx("rounded-lg border px-1 py-1.5", st.done && i > 1 ? "border-buy/50 bg-buy/10" : "border-line", i === here && "ring-1 ring-gold")}>
+          <div className={cx("text-[10px] font-bold", st.tone)}>
+            {st.label}
+            {st.done && i > 1 ? " ✓" : ""}
+          </div>
+          <div className="num text-[11px]">{fmt(st.value)}</div>
+          {i === here && <div className="text-[9px] font-semibold text-gold">harga di sini</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Baris riwayat sinyal yang bisa diketuk untuk melihat level SL/TP; sinyal berjalan menampilkan progres TP & floating. */
+export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: SetupRow; tz: string; time: string; grade: string | null; price: number | null; extra?: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const running = isRunningSignal(s);
+  const tpHit = s.outcome_tp ?? 0;
+  const result: ResultKind = running ? (tpHit >= 2 ? "tp2" : tpHit === 1 ? "tp1" : "running") : ((s.outcome ?? "open") as ResultKind);
+  const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, s.pip_size || 0.1) : null;
   return (
     <>
       <HistoryRow
@@ -159,13 +219,14 @@ export function SignalHistoryItem({ s, tz, time, grade, extra }: { s: SetupRow; 
         timeframe={s.timeframe}
         grade={grade}
         time={time}
-        result={s.outcome === "open" || !s.outcome ? "open" : s.outcome}
-        pips={s.outcome === "open" ? null : s.outcome_pips}
-        sub={open ? "Ketuk untuk menutup detail" : "Ketuk untuk lihat entry, SL & TP"}
+        result={result}
+        pips={running ? float : s.outcome_pips}
+        pipsNote={running ? "floating" : undefined}
+        sub={open ? "Ketuk untuk menutup detail" : running && s.outcome_note ? `${s.outcome_note} Ketuk untuk detail.` : "Ketuk untuk lihat entry, SL & TP"}
         onClick={() => setOpen((v) => !v)}
         active={open}
       />
-      {open && <SignalDetails s={s} tz={tz} extra={extra} />}
+      {open && <SignalDetails s={s} tz={tz} price={price} extra={extra} />}
     </>
   );
 }

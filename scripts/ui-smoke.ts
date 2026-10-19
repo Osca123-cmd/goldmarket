@@ -36,10 +36,11 @@ function series(tf: Timeframe, end: number, count: number) {
 }
 
 // --- fixture dari engine nyata atas data demo ---
-const raw = { H4: series("H4", NOW, 300), H1: series("H1", NOW, 300), M15: series("M15", NOW, 300), M5: series("M5", NOW, 300) };
+const view = (t: number) => ({ H4: series("H4", t, 300), H1: series("H1", t, 300), M30: series("M30", t, 300), M15: series("M15", t, 300), M5: series("M5", t, 300) });
+const raw = view(NOW);
 let setups: Record<string, unknown>[] = [];
 for (let t = NOW - 6 * 3600; t <= NOW; t += 900) {
-  const r = { H4: series("H4", t, 300), H1: series("H1", t, 300), M15: series("M15", t, 300), M5: series("M5", t, 300) };
+  const r = view(t);
   const o = runEngineCycle({ nowSec: t, rawCandles: r, price: demoPrice(t / 60), quoteTimeSec: t, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "demo", previousFeedStatus: "demo", existing: setups.map((s) => s.__stored as never), config: DEFAULT_ENGINE_CONFIG });
   for (const c of o.created) {
     const id = `00000000-0000-4000-8000-${String(setups.length + 1).padStart(12, "0")}`;
@@ -60,7 +61,7 @@ setups = setups.map(({ __stored, ...s }) => ({ ...s, outcome: null, outcome_tp: 
 const history: Record<string, unknown>[] = [];
 let hist: Record<string, unknown>[] = [];
 for (let t = NOW - 3 * 86400; t <= NOW - 6 * 3600 && history.length < 8; t += 900) {
-  const r = { H4: series("H4", t, 300), H1: series("H1", t, 300), M15: series("M15", t, 300), M5: series("M5", t, 300) };
+  const r = view(t);
   const o = runEngineCycle({ nowSec: t, rawCandles: r, price: demoPrice(t / 60), quoteTimeSec: t, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "demo", previousFeedStatus: "demo", existing: hist as never, config: DEFAULT_ENGINE_CONFIG });
   for (const c of o.created) {
     hist.push({ id: c.identityKey, identity_key: c.identityKey, strategy: c.strategy, direction: c.direction, timeframe: c.timeframe, confirm_tf: c.confirmTf, entry_type: c.entryType, entry_price: c.entry, entry_low: c.entryLow, entry_high: c.entryHigh, invalidation: c.invalidation, sl: c.sl, created_at_sec: c.createdAt, expires_at_sec: c.expiresAt, status: "approaching", eligible: c.eligible, confirmed_at_sec: null, entry_touched_at_sec: null });
@@ -71,6 +72,11 @@ for (let t = NOW - 3 * 86400; t <= NOW - 6 * 3600 && history.length < 8; t += 90
     const res = evaluateOutcome({ direction: c.direction, entry: c.entry, sl: c.sl, tps: [c.tp1, c.tp2, c.tp3], entryTouchedAtSec: touch.time, candles: fut, barSec: 300, price: null, nowSec: Math.min(NOW, touch.time + 86400), maxHoldSec: 86400, spec: DEFAULT_XAUUSD });
     history.push({ ...setups[0], id: `00000000-0000-4000-9000-${String(history.length + 1).padStart(12, "0")}`, direction: c.direction, strategy: c.strategy, timeframe: c.timeframe, entry_price: c.entry, sl: c.sl, tp1: c.tp1, tp2: c.tp2, tp3: c.tp3, score: c.score.total, status: "entry_touched", entry_touched_at: iso(touch.time), outcome: res.outcome, outcome_tp: res.tpHit, outcome_pips: res.pips, outcome_note: res.note, outcome_ambiguous: res.ambiguous });
   }
+}
+// sinyal berjalan (TP1 sudah tersentuh) agar badge "TP1 ✓" + floating + tangga TP ikut diuji
+if (setups[0]) {
+  const p0 = demoPrice(NOW / 60);
+  history.unshift({ ...setups[0], id: "00000000-0000-4000-9000-000000000099", direction: "SELL", timeframe: "M15", entry_price: p0 + 6, sl: p0 + 11, tp1: p0 + 1, tp2: p0 - 4, tp3: p0 - 9, status: "entry_touched", entry_touched_at: iso(NOW - 1800), outcome: "open", outcome_tp: 1, outcome_pips: null, outcome_note: "TP1 tersentuh, pelacakan berlanjut.", outcome_ambiguous: false });
 }
 console.log(`Riwayat sinyal fixture: ${history.length}`);
 const out = runEngineCycle({ nowSec: NOW, rawCandles: raw, price: demoPrice(NOW / 60), quoteTimeSec: NOW, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "live", previousFeedStatus: "live", existing: [], config: DEFAULT_ENGINE_CONFIG });
@@ -218,6 +224,18 @@ for (const vp of viewports) {
     if (errors.length) problems.push(`${vp.name} ${p}: error JS ${errors.join(" | ")}`);
     const name = `${vp.name}-${p.replace(/\//g, "").replace("?bt", "-backtest") || "dashboard"}.png`;
     await page.screenshot({ path: join(OUT, name), fullPage: vp.name === "mobile" ? false : true });
+    if (p === "/opportunities/") {
+      // riwayat sinyal: baris berjalan bisa diketuk → tangga TP + floating
+      const row = page.getByRole("button", { name: /TP1 ✓/ }).first();
+      if ((await row.count()) === 0) problems.push(`${vp.name} ${p}: baris riwayat "TP1 ✓" tidak ditemukan`);
+      else {
+        await row.click();
+        await page.waitForTimeout(300);
+        if ((await page.getByText("harga di sini").count()) === 0 && (await page.getByText("Floating").count()) === 0) problems.push(`${vp.name} ${p}: detail sinyal berjalan tidak tampil`);
+        await row.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: join(OUT, `${vp.name}-signal-history-open.png`) });
+      }
+    }
     await page.close();
   }
   await ctx.close();

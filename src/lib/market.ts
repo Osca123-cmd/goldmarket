@@ -229,6 +229,11 @@ export function isRunningSignal(s: Pick<SetupRow, "status" | "outcome">): boolea
   return s.status === "entry_touched" && (s.outcome == null || s.outcome === "open");
 }
 
+/** Pips mengambang posisi sinyal pada harga sekarang (positif = untung searah arah sinyal). */
+export function floatingPips(direction: "BUY" | "SELL", entry: number, price: number, pipSize: number): number {
+  return ((direction === "BUY" ? 1 : -1) * (price - entry)) / pipSize;
+}
+
 /** Riwayat sinyal: setup yang entry-nya tersentuh menurut feed beserta hasilnya. */
 export function useSignalHistory(limit = 100) {
   return useLive<SetupRow[]>(`history:${limit}`, "setups", async () => {

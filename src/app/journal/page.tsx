@@ -199,6 +199,7 @@ function Journal() {
                 key={h.id}
                 s={h}
                 tz={tz}
+                price={snapshot?.price ?? null}
                 grade={gradeOf(h.score)}
                 time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`}
                 extra={
