@@ -171,7 +171,7 @@ function Dashboard() {
 
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
             <span>
-              Update <span className="text-ink">{fmtTime(snapshot?.quote_time, tz)}</span> ({ago(snapshot?.quote_time, now)})
+              Update <span className="text-ink">{fmtTime(snapshot?.quote_time, tz)}</span> ({ago(snapshot?.quote_time, now)}) · harga diperbarui ±1×/menit
             </span>
             <span>
               Sumber <span className="text-ink">{snapshot?.source_label ?? "—"}</span>

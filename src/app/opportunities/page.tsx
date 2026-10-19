@@ -92,13 +92,18 @@ function zones(analysis: AnalysisRow | null, price: number | null, pipSize: numb
   if (!analysis || price == null) return { dir: null, list: [] };
   const atr = analysis.timeframes.M15?.atr ?? 2;
   const pad = Math.max(atr * 0.15, pipSize * 5);
-  const all: Zone[] = analysis.levels.map((l) => ({
-    low: l.price - pad,
-    high: l.price + pad,
-    label: `${l.price > price ? "Resistance" : "Support"} ${l.tf} · ${l.touches}× sentuhan`,
-    dist: Math.abs(l.price - price) / pipSize,
-    kind: l.price > price ? "resistance" : "support",
-  }));
+  const all: Zone[] = analysis.levels.map((l) => {
+    const low = l.price - pad;
+    const high = l.price + pad;
+    return {
+      low,
+      high,
+      label: `${l.price > price ? "Resistance" : "Support"} ${l.tf} · ${l.touches}× sentuhan`,
+      // jarak harga ke tepi zona terdekat (0 bila harga sudah di dalam zona)
+      dist: Math.max(0, price < low ? low - price : price - high) / pipSize,
+      kind: l.price > price ? "resistance" : "support",
+    };
+  });
   const dir = analysis.main_bias === "bullish" ? "BUY" : analysis.main_bias === "bearish" ? "SELL" : null;
   const want = dir === "BUY" ? ["support"] : dir === "SELL" ? ["resistance"] : ["support", "resistance"];
   const list = all.filter((z) => want.includes(z.kind)).sort((a, b) => a.dist - b.dist);
@@ -109,7 +114,8 @@ function zones(analysis: AnalysisRow | null, price: number | null, pipSize: numb
 }
 
 function Watching({ analysis, snapshot, pipSize }: { analysis: AnalysisRow | null; snapshot: Snapshot | null; pipSize: number }) {
-  const { dir, list } = zones(analysis, snapshot?.price ?? null, pipSize);
+  const price = snapshot?.price ?? null;
+  const { dir, list } = zones(analysis, price, pipSize);
   return (
     <div className="rounded-2xl border border-line bg-surface-2/40 p-4 text-left sm:p-5">
       <div className="flex items-center justify-between gap-2">
@@ -118,14 +124,18 @@ function Watching({ analysis, snapshot, pipSize }: { analysis: AnalysisRow | nul
       </div>
       <div className="mt-3 flex flex-wrap items-baseline gap-2">
         {dir ? (
-          <span className={cx("text-2xl font-extrabold", dir === "BUY" ? "text-buy" : "text-sell")}>{dir === "BUY" ? "▲ BUY" : "▼ SELL"}</span>
+          <span className={cx("text-2xl font-extrabold", dir === "BUY" ? "text-buy" : "text-sell")}>{dir === "BUY" ? "▲ Bias BUY" : "▼ Bias SELL"}</span>
         ) : (
           <span className="text-2xl font-extrabold text-muted">◆ NETRAL</span>
         )}
         <span className="text-sm text-muted">
-          {analysis ? (dir ? `setup · tren MTF ${analysis.strong_bias ? "searah (H4+H1)" : "moderat (H1)"}` : "pasar ranging · menunggu arah") : "menunggu analisis"}
+          {analysis ? (dir ? `tren MTF ${analysis.strong_bias ? "searah (H4+H1)" : "moderat (H1)"}` : "pasar ranging · menunggu arah") : "menunggu analisis"}
         </span>
       </div>
+      <p className="mt-1 text-xs text-muted">
+        {price != null && <>Harga sekarang <span className="num font-semibold text-ink">{fmt(price)}</span> · </>}
+        {dir === "BUY" ? "menunggu harga turun ke zona support" : dir === "SELL" ? "menunggu harga naik ke zona resistance" : "menunggu harga mendekati zona"} · belum ada sinyal entry
+      </p>
       <div className="mt-3 divide-y divide-line/70 border-t border-line/70">
         {[0, 1].map((i) => {
           const z = list[i];
@@ -137,7 +147,9 @@ function Watching({ analysis, snapshot, pipSize }: { analysis: AnalysisRow | nul
               </div>
               <div className="shrink-0 text-right">
                 <div className={cx("num text-sm font-bold", z ? (z.kind === "resistance" ? "text-sell" : "text-buy") : "text-muted")}>{z ? `${fmt(z.low)} – ${fmt(z.high)}` : "—"}</div>
-                <div className="num text-xs text-muted">{z ? `${fmt(z.dist, 1)} pips` : ""}</div>
+                <div className="num text-xs text-muted">
+                  {z ? (z.dist === 0 ? "harga di dalam zona" : `${fmt(z.dist, 0)} pips · $${fmt(z.dist * pipSize, 1)} ${z.kind === "support" ? "di bawah" : "di atas"} harga`) : ""}
+                </div>
               </div>
             </div>
           );

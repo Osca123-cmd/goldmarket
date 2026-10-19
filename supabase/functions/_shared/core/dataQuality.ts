@@ -67,8 +67,11 @@ export interface QualityThresholds {
   maxSpreadPips: number;
 }
 
+/** gold-api memperbarui harga ±1×/menit → Live bila umur quote ≤ 75 dtk (lebih dari itu: Delayed) */
+export const LIVE_MAX_AGE_SEC = 75;
+
 export const DEFAULT_THRESHOLDS: QualityThresholds = {
-  liveMaxAgeSec: 30,
+  liveMaxAgeSec: LIVE_MAX_AGE_SEC,
   signalMaxAgeSec: 180,
   maxGaps: 0,
   maxSpreadPips: 8,
@@ -112,9 +115,8 @@ export function assessQuality(args: {
       reasons.push(`Data ${tf} kurang (${c.length}/${args.minBars} bar).`);
       continue;
     }
-    const lastClose = c[c.length - 1].time + TF_SECONDS[tf];
-    // bar terakhir harus cukup baru (maks 2 bar tertinggal) bila pasar buka
-    if (args.nowSec - lastClose > 2 * TF_SECONDS[tf] + 60 && isMarketOpenBySchedule(args.nowSec * 1000, args.schedule)) {
+    if (candleBehind(c[c.length - 1].time, tf, args.nowSec, args.schedule)) {
+      const lastClose = c[c.length - 1].time + TF_SECONDS[tf];
       reasons.push(`Candle ${tf} terakhir tertinggal ${Math.round((args.nowSec - lastClose) / 60)} menit.`);
     }
     const g = findGaps(c, tf, 30, args.schedule);
@@ -122,6 +124,12 @@ export function assessQuality(args: {
     if (g.length > t.maxGaps) reasons.push(`${g.length} candle ${tf} hilang pada 30 bar terakhir.`);
   }
   return { ok: reasons.length === 0, reasons, quoteAgeSec: age, gaps };
+}
+
+/** Bar terakhir tertinggal lebih dari 2 bar padahal pasar buka (dipakai gate kualitas & ambil ulang candle). */
+export function candleBehind(lastBarTime: number, tf: Timeframe, nowSec: number, schedule?: TradingSchedule): boolean {
+  const lastClose = lastBarTime + TF_SECONDS[tf];
+  return nowSec - lastClose > 2 * TF_SECONDS[tf] + 60 && isMarketOpenBySchedule(nowSec * 1000, schedule);
 }
 
 /** Status feed yang jujur: Live hanya jika data segar dan bukan simulasi. */

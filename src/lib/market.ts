@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { Candle, FeedStatus, Timeframe } from "@/core/types";
-import { backoffSeconds } from "@/core/dataQuality";
+import { LIVE_MAX_AGE_SEC, backoffSeconds } from "@/core/dataQuality";
 
 export interface Snapshot {
   source: string;
@@ -311,7 +311,7 @@ export async function fetchCandles(source: string, tf: Timeframe, limit = 500): 
 
 /**
  * Status efektif di browser: tidak pernah lebih optimis dari data.
- * Harga lebih tua dari 30 dtk → Delayed; snapshot tidak diperbarui > 3 menit → Disconnected.
+ * Harga lebih tua dari LIVE_MAX_AGE_SEC → Delayed; snapshot tidak diperbarui > 3 menit → Disconnected.
  */
 export function effectiveStatus(s: Snapshot | null, now = Date.now()): FeedStatus {
   if (!s) return "disconnected";
@@ -319,7 +319,7 @@ export function effectiveStatus(s: Snapshot | null, now = Date.now()): FeedStatu
   if (now - Date.parse(s.updated_at) > 180_000) return "disconnected";
   if (s.feed_status !== "live") return s.feed_status;
   const age = s.quote_time ? (now - Date.parse(s.quote_time)) / 1000 : Infinity;
-  return age <= 30 ? "live" : "delayed";
+  return age <= LIVE_MAX_AGE_SEC ? "live" : "delayed";
 }
 
 export const FEED_STATUS_LABEL: Record<FeedStatus, string> = {

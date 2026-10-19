@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { candleBehind } from "../src/core/dataQuality.ts";
 import { createProvider, marketHoursOnly, parseGoldApi, parseTwelveDataQuote, parseTwelveDataSeries, spotHybrid, tdHybrid, usesTwelveDataCandles } from "../src/core/providers.ts";
 
 const WED = Date.parse("2026-10-14T09:00:00Z") / 1000; // pasar buka
@@ -95,5 +96,16 @@ describe("marketHoursOnly (buang bar PAXG di luar jam pasar emas)", () => {
     expect(keep("2026-10-17T00:00:00Z", "D1")).toBe(false);
     expect(keep("2026-10-16T00:00:00Z", "D1")).toBe(true);
     expect(keep("2026-10-18T00:00:00Z", "D1")).toBe(true);
+  });
+});
+
+describe("candleBehind", () => {
+  it("bar H4 tertinggal setelah pasar buka Minggu → ambil ulang; akhir pekan → tidak", () => {
+    const friH4 = Date.parse("2026-10-16T16:00:00Z") / 1000; // bar H4 terakhir Jumat
+    expect(candleBehind(friH4, "H4", Date.parse("2026-10-18T22:20:00Z") / 1000)).toBe(true); // Minggu setelah buka
+    expect(candleBehind(friH4, "H4", Date.parse("2026-10-17T12:00:00Z") / 1000)).toBe(false); // Sabtu: pasar tutup
+    const m5 = Date.parse("2026-10-14T09:00:00Z") / 1000;
+    expect(candleBehind(m5, "M5", m5 + 600)).toBe(false); // bar 09:00 tutup 09:05, sekarang 09:10
+    expect(candleBehind(m5, "M5", m5 + 1200)).toBe(true);
   });
 });

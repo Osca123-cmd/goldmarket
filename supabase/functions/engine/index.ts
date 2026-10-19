@@ -11,6 +11,7 @@ import {
   usesTwelveDataCandles,
   dedupeCandles,
   marketHoursOnly,
+  candleBehind,
   deriveFeedStatus,
   isMarketOpenBySchedule,
   mergeConfig,
@@ -138,6 +139,11 @@ function backfillSize(p: MarketProvider, tf: Timeframe): number {
   return { M1: 1000, M5: 5000, M15: 3000, M30: 2000, H1: 2000, H4: 1000, D1: 500 }[tf];
 }
 
+async function storedBarBehind(db: Db, source: string, tf: Timeframe, nowSec: number): Promise<boolean> {
+  const { data } = await db.from("market_candles").select("ts").eq("source", source).eq("timeframe", tf).order("ts", { ascending: false }).limit(1).maybeSingle();
+  return data ? candleBehind(sec(data.ts)!, tf, nowSec) : false;
+}
+
 /** Ambil candle yang jatuh tempo (bar baru tertutup) + backfill bertahap. Menghormati rate limit. */
 async function refreshCandles(db: Db, p: MarketProvider, state: Record<string, unknown>, nowSec: number) {
   const lastFetch = (state.last_candle_fetch ?? {}) as Record<string, number>;
@@ -152,8 +158,10 @@ async function refreshCandles(db: Db, p: MarketProvider, state: Record<string, u
     const step = TF_SECONDS[tf];
     const last = lastFetch[tf] ?? 0;
     const newBar = Math.floor(nowSec / step) > Math.floor(last / step);
-    // Twelve Data (kredit terbatas): hanya saat bar baru. Provider lain: juga perbarui bar berjalan tiap 5 menit.
-    const due = newBar || (!td && nowSec - last >= Math.min(step, 300));
+    // Twelve Data (kredit terbatas): hanya saat bar baru, atau bila bar tersimpan tertinggal saat pasar buka
+    // (mis. bar H4 yang diambil sebelum pasar buka Minggu), maks tiap 15 menit. Provider lain: bar berjalan tiap 5 menit.
+    const behind = td && !newBar && backfilled[tf] && nowSec - last >= 900 && isMarketOpenBySchedule(nowSec * 1000) && (await storedBarBehind(db, p.id, tf, nowSec));
+    const due = newBar || behind || (!td && nowSec - last >= Math.min(step, 300));
     if (!backfilled[tf]) {
       if (backfills >= 2) continue;
       const c = marketHoursOnly(await p.fetchCandles(tf, backfillSize(p, tf), nowSec), tf);
