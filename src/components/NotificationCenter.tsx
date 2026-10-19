@@ -114,7 +114,7 @@ export function NotificationCenter() {
       void supabase().from("user_alerts").insert({ dedupe_key: key });
       push({
         key,
-        title: readyTitle(s.direction, s.timeframe, ` · ${dist.toFixed(1)} pips lagi`),
+        title: readyTitle(s.direction, s.timeframe, ` · ${dist.toFixed(1)} pips lagi`, s.strategy),
         body: `Harga mendekati zona ${s.entry_low.toFixed(2)}–${s.entry_high.toFixed(2)} (entry ${s.entry_price.toFixed(2)}, SL ${s.sl.toFixed(2)}, TP1 ${s.tp1.toFixed(2)}). Ambang ${settings.near_entry_pips} pips.`,
         severity: "warning",
       });

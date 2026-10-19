@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runEngineCycle, type EngineInput } from "../src/core/engine.ts";
+import { readyTitle, runEngineCycle, type EngineInput } from "../src/core/engine.ts";
 import { DEFAULT_ENGINE_CONFIG, mergeConfig, planFor } from "../src/core/config.ts";
 import { demoPrice } from "../src/core/providers.ts";
 import { analyzeMarket } from "../src/core/analysis.ts";
@@ -239,5 +239,12 @@ describe("strategi supply/demand reversal (riset)", () => {
 
   it("tidak aktif di sinyal live secara default", () => {
     expect(DEFAULT_ENGINE_CONFIG.strategies).not.toContain("sd_reversal");
+  });
+});
+
+describe("label eksperimen", () => {
+  it("notifikasi strategi eksperimen diberi label; strategi live biasa tidak", () => {
+    expect(readyTitle("SELL", "M15", "", "sd_reversal")).toBe("🔴 READY SELL XAUUSD — M15 · 🧪 Eksperimen");
+    expect(readyTitle("BUY", "H1", " · 12.0 pips lagi", "breakout_retest")).toBe("🟢 READY BUY XAUUSD — H1 · 12.0 pips lagi");
   });
 });

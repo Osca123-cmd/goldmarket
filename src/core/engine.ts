@@ -1,6 +1,6 @@
 import type { AnalysisStatus, Candle, FeedStatus, OpportunityStatus, Timeframe } from "./types.ts";
 import { ACTIVE_STATUSES } from "./types.ts";
-import type { EngineConfig } from "./config.ts";
+import { EXPERIMENTAL_STRATEGIES, type EngineConfig } from "./config.ts";
 import { analyzeMarket, summarizeStatus, type MultiTfAnalysis } from "./analysis.ts";
 import { assessQuality, closedAsOf, type QualityReport } from "./dataQuality.ts";
 import { detectAll, type SetupCandidate } from "./strategies.ts";
@@ -65,8 +65,9 @@ export interface EngineOutput {
 }
 
 /** Judul notifikasi siap-siap: "🟢 READY BUY XAUUSD — M15" / "🔴 READY SELL XAUUSD — H1". */
-export function readyTitle(direction: "BUY" | "SELL", timeframe: string, suffix = ""): string {
-  return `${direction === "BUY" ? "🟢" : "🔴"} READY ${direction} XAUUSD — ${timeframe}${suffix}`;
+export function readyTitle(direction: "BUY" | "SELL", timeframe: string, suffix = "", strategy?: string): string {
+  const exp = strategy && (EXPERIMENTAL_STRATEGIES as string[]).includes(strategy) ? " · 🧪 Eksperimen" : "";
+  return `${direction === "BUY" ? "🟢" : "🔴"} READY ${direction} XAUUSD — ${timeframe}${exp}${suffix}`;
 }
 
 const FEED_LABEL: Record<FeedStatus, string> = {
@@ -151,7 +152,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
         notifications.push({
           kind: "new_setup",
           dedupeKey: `new:${c.identityKey}`,
-          title: readyTitle(c.direction, c.timeframe),
+          title: readyTitle(c.direction, c.timeframe, "", c.strategy),
           body: `Zona ${c.entryLow.toFixed(2)}–${c.entryHigh.toFixed(2)} · entry ${c.entryType} ${c.entry.toFixed(2)} · SL ${c.sl.toFixed(2)} · TP1 ${c.tp1.toFixed(2)} · TP2 ${c.tp2.toFixed(2)} · TP3 ${c.tp3.toFixed(2)} · skor ${c.score.total}/100. Siapkan rencana; tunggu harga masuk zona & konfirmasi.`,
           setupIdentity: c.identityKey,
           severity: "info",

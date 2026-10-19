@@ -683,7 +683,7 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
 
   // "Harga mendekati entry" per pengguna (ambang masing-masing), dedupe via user_alerts
   if (price != null) {
-    const { data: near } = await db.from("setups").select("id,direction,timeframe,entry_price,entry_low,entry_high,sl,tp1,score").eq("status", "approaching").eq("eligible", true).limit(50);
+    const { data: near } = await db.from("setups").select("id,direction,timeframe,strategy,entry_price,entry_low,entry_high,sl,tp1,score").eq("status", "approaching").eq("eligible", true).limit(50);
     for (const uid of users) {
       const p = prefs.get(uid);
       if (!p || p.notify_kinds?.near_entry === false) continue;
@@ -693,7 +693,7 @@ async function deliverPush(db: Db, fresh: { kind: string; title: string; body: s
         if (dist > p.near_entry_pips) continue;
         const { error } = await db.from("user_alerts").insert({ user_id: uid, dedupe_key: `near:${s.id}` });
         if (error) continue; // sudah pernah diberi tahu
-        queue.push({ userId: uid, payload: { title: readyTitle(s.direction, s.timeframe, ` · ${dist.toFixed(1)} pips lagi`), body: `Harga mendekati zona ${Number(s.entry_low).toFixed(2)}–${Number(s.entry_high).toFixed(2)} (entry ${Number(s.entry_price).toFixed(2)}, SL ${Number(s.sl).toFixed(2)}, TP1 ${Number(s.tp1).toFixed(2)}). Siapkan platform Anda; pemicu jarak, bukan jaminan.`, tag: `near:${s.id}`, url: APP_URL + "opportunities/" } });
+        queue.push({ userId: uid, payload: { title: readyTitle(s.direction, s.timeframe, ` · ${dist.toFixed(1)} pips lagi`, s.strategy), body: `Harga mendekati zona ${Number(s.entry_low).toFixed(2)}–${Number(s.entry_high).toFixed(2)} (entry ${Number(s.entry_price).toFixed(2)}, SL ${Number(s.sl).toFixed(2)}, TP1 ${Number(s.tp1).toFixed(2)}). Siapkan platform Anda; pemicu jarak, bukan jaminan.`, tag: `near:${s.id}`, url: APP_URL + "opportunities/" } });
       }
     }
   }
@@ -908,9 +908,14 @@ const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep", "sd_
 /** toleransi invalidasi yang ikut disimulasikan untuk RISET; ringkasan live hanya memakai trade dengan invSlackPips ≤ toleransi live */
 const BT_INV_TOL_PIPS = 5;
 
-async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT, source: string): Promise<string> {
-  const { spec: _spec, ...strategy } = cfg;
-  const bytes = new TextEncoder().encode(JSON.stringify({ code: STRATEGY_CODE_VERSION, source, strategy, o }));
+/**
+ * Versi = apa yang DISIMULASIKAN (gabungan strategi live + riset, toleransi riset), bukan pilihan live:
+ * memindahkan strategi riset ke live atau menaikkan toleransi live tidak menghitung ulang backtest.
+ */
+async function strategyVersion(btCfg: EngineConfig, o: typeof DEFAULT_BT, source: string): Promise<string> {
+  const { spec: _spec, strategies, ...strategy } = btCfg;
+  const simulated = [...strategies].sort();
+  const bytes = new TextEncoder().encode(JSON.stringify({ code: STRATEGY_CODE_VERSION, source, simulated, strategy, o }));
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(hash.slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -951,7 +956,12 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   const o = { ...DEFAULT_BT, spreadPips: ASSUMED_SPREAD_PIPS, window: 220 };
   const hist = tdKey ? createProvider("twelvedata", { twelveDataKey: tdKey }) : createProvider("binance_paxg", {});
   const BT_SOURCE = BT_SOURCE_LABEL[hist.id];
-  const version = await strategyVersion(cfg, o, hist.id);
+  const btCfg: EngineConfig = {
+    ...cfg,
+    strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
+    invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
+  };
+  const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);
   const { data: doneRows, error: dErr } = await db.from("backtest_chunks").select("chunk_start,computed_at").eq("version", version);
   if (dErr) throw new Error(`chunks: ${dErr.message}`);
@@ -971,11 +981,6 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     bars[tf] = candles[tf]!.length;
   }
 
-  const btCfg: EngineConfig = {
-    ...cfg,
-    strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
-    invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
-  };
   const trades = runBacktestTrades(candles, btCfg, o, { fromSec: start, toSec: Math.min(end, nowSec) });
   await db.from("backtest_trades").delete().eq("version", version).eq("chunk_start", iso(start));
   for (let i = 0; i < trades.length; i += 500) {
