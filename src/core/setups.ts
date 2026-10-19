@@ -94,6 +94,8 @@ export function evaluateStatus(
     price: number | null;
     /** candle TF konfirmasi (boleh termasuk bar berjalan untuk sentuhan intrabar) */
     confirmCandles: Candle[];
+    /** candle halus (M5) untuk mencatat waktu sentuhan yang sebenarnya, bukan waktu deteksi */
+    touchCandles?: Candle[];
     mainBias: MarketBias;
     dataOk: boolean;
   },
@@ -128,12 +130,16 @@ export function evaluateStatus(
       const wantsUp = (s.entry_type === "stop") === (s.direction === "BUY");
       return wantsUp ? hi >= s.entry_price : lo <= s.entry_price;
     };
+    // candle M5 pertama yang menyentuh → waktu sentuhan (candle M15 Twelve Data baru masuk saat bar tutup)
+    const fine = (args.touchCandles ?? []).find((c) => c.time > s.created_at_sec && hit(c.high, c.low));
     const touched =
       s.entry_type === "market" ||
+      fine != null ||
       after.some((c) => hit(c.high, c.low)) ||
       (args.price != null && hit(args.price, args.price));
     if (touched) {
-      return { ...base, status: "entry_touched", entryTouchedAt: args.nowSec, reason: "Harga feed menyentuh entry (bukan berarti posisi dibuka).", events: ["entry_touched"] };
+      const at = fine ? Math.min(fine.time, args.nowSec) : args.nowSec;
+      return { ...base, status: "entry_touched", entryTouchedAt: at, reason: "Harga feed menyentuh entry (bukan berarti posisi dibuka).", events: ["entry_touched"] };
     }
   }
 

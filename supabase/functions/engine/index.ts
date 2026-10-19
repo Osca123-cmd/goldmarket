@@ -419,6 +419,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   // ---- analisis ----
   const raw: Partial<Record<Timeframe, Candle[]>> = {};
   for (const tf of analysisTfs(cfg)) raw[tf] = await loadCandles(db, provider.id, tf, 300);
+  // M5 bukan TF analisis: dipakai untuk waktu sentuhan entry & pelacakan hasil (sumbu SL/TP di antara tick harga)
+  const m5 = raw.M5 ?? (await loadCandles(db, provider.id, "M5", 300));
   const since = iso(t0 - 3 * 86400);
   const { data: existingRows } = await db
     .from("setups")
@@ -439,6 +441,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   const out = runEngineCycle({
     nowSec: t0,
     rawCandles: raw,
+    touchCandles: m5,
     price,
     quoteTimeSec: quoteTime,
     spreadPips: spreadForEngine,
@@ -527,8 +530,6 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     .eq("eligible", true)
     .or("outcome.is.null,outcome.eq.open")
     .limit(100);
-  // M5 tidak termasuk TF analisis, jadi dimuat khusus agar sumbu SL/TP di antara tick harga ikut terhitung
-  const outcomeBars = tracking?.length ? await loadCandles(db, provider.id, "M5", 300) : [];
   for (const t of tracking ?? []) {
     const touched = sec(t.entry_touched_at);
     if (touched == null) continue;
@@ -538,7 +539,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       sl: t.sl,
       tps: [t.tp1, t.tp2, t.tp3],
       entryTouchedAtSec: touched,
-      candles: outcomeBars,
+      candles: m5,
       barSec: TF_SECONDS.M5,
       price: out.quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? price : null,
       nowSec: t0,

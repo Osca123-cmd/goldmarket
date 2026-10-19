@@ -27,6 +27,8 @@ export interface EngineInput {
   nowSec: number;
   /** candle mentah per TF (boleh berisi bar yang masih berjalan) */
   rawCandles: Partial<Record<Timeframe, Candle[]>>;
+  /** candle M5 untuk waktu sentuhan entry yang presisi */
+  touchCandles?: Candle[];
   price: number | null;
   quoteTimeSec: number | null;
   spreadPips: number | null;
@@ -171,6 +173,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       nowSec: i.nowSec,
       price: quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? i.price : null,
       confirmCandles: i.rawCandles[s.confirm_tf] ?? [],
+      touchCandles: i.touchCandles,
       mainBias: analysis.mainBias,
       dataOk: quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec && i.feedStatus !== "disconnected",
     });

@@ -5,7 +5,8 @@ import { priceToPips, type InstrumentSpec } from "./instrument.ts";
  * Hasil SINYAL menurut feed (Riwayat Sinyal) — terpisah dari jurnal pengguna.
  *
  * Aturan (didokumentasikan di docs/STRATEGY.md §10):
- *  - Pelacakan dimulai saat entry tersentuh menurut feed.
+ *  - Pelacakan dimulai saat entry tersentuh menurut feed. TP di candle tempat
+ *    entry tersentuh tidak dihitung (bisa terjadi sebelum entry); SL tetap.
  *  - WIN  : minimal TP1 tersentuh sebelum SL. Hasil = pips TP tertinggi yang
  *           tersentuh sebelum SL / TP3 / batas waktu.
  *  - LOSS : SL tersentuh sebelum TP1. Hasil = −pips SL.
@@ -52,13 +53,14 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
   let ambiguous = false;
   // bar tempat entry tersentuh ikut dihitung (rentangnya bisa memuat SL/TP setelah sentuhan)
   const bars = i.candles.filter((c) => c.time + i.barSec > i.entryTouchedAtSec);
-  const points: { hi: number; lo: number; t: number }[] = bars.map((c) => ({ hi: c.high, lo: c.low, t: c.time }));
-  if (i.price != null) points.push({ hi: i.price, lo: i.price, t: i.nowSec });
+  // candle sentuhan bisa memuat harga sebelum entry → TP di candle itu tidak dihitung (SL tetap)
+  const points: { hi: number; lo: number; t: number; touchBar: boolean }[] = bars.map((c) => ({ hi: c.high, lo: c.low, t: c.time, touchBar: c.time <= i.entryTouchedAtSec }));
+  if (i.price != null) points.push({ hi: i.price, lo: i.price, t: i.nowSec, touchBar: false });
 
   for (const p of points) {
     const slHit = s > 0 ? p.lo <= i.sl : p.hi >= i.sl;
     let reached: 0 | 1 | 2 | 3 = tpHit;
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; !p.touchBar && k < 3; k++) {
       const tp = i.tps[k];
       if (s > 0 ? p.hi >= tp : p.lo <= tp) reached = Math.max(reached, k + 1) as 0 | 1 | 2 | 3;
     }

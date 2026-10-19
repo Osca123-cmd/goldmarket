@@ -38,6 +38,14 @@ describe("hasil sinyal menurut feed", () => {
     const r = evaluateOutcome({ ...base, candles: [bar(1200, 3001, 2994)], tpHitBefore: 1 });
     expect(r).toMatchObject({ outcome: "win", pips: 50, tpHit: 1, ambiguous: false });
   });
+  it("TP di candle tempat entry tersentuh tidak dihitung; candle berikutnya dihitung", () => {
+    // entry tersentuh 1000 di dalam candle 900 yang high-nya sempat di atas TP1 (sebelum turun ke entry)
+    expect(evaluateOutcome({ ...base, candles: [bar(900, 3006, 2999)] })).toMatchObject({ outcome: "open", tpHit: 0 });
+    expect(evaluateOutcome({ ...base, candles: [bar(900, 3006, 2999), bar(1200, 3006, 3001)] })).toMatchObject({ outcome: "open", tpHit: 1 });
+  });
+  it("SL di candle sentuhan tetap LOSS", () => {
+    expect(evaluateOutcome({ ...base, candles: [bar(900, 3006, 2994)] })).toMatchObject({ outcome: "loss", pips: -50 });
+  });
   it("grade dari skor", () => {
     expect([gradeOf(85), gradeOf(72), gradeOf(61), gradeOf(40), gradeOf(null)]).toEqual(["A+", "A", "B", "C", null]);
   });

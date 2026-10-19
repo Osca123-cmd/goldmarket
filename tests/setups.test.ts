@@ -40,6 +40,19 @@ describe("lifecycle peluang", () => {
     expect(u.status).toBe("invalid");
   });
 
+  it("waktu sentuhan = awal candle M5 pertama yang menyentuh, bukan waktu deteksi", () => {
+    const m5 = [c(1_000_200, 3002, 3003, 2999, 3002), c(1_000_500, 3002, 3003, 3001, 3002), c(1_000_800, 3002, 3002, 2999.5, 3001)];
+    const u = evaluateStatus(base, { nowSec: 1_001_700, price: 3002, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true });
+    // candle 1_000_200 (saat setup dibuat) diabaikan walau low-nya menyentuh entry
+    expect(u).toMatchObject({ status: "entry_touched", entryTouchedAt: 1_000_800 });
+  });
+
+  it("sentuhan hanya lewat tick harga → waktu deteksi", () => {
+    const m5 = [c(1_000_500, 3002, 3003, 3001, 3002)];
+    const u = evaluateStatus(base, { nowSec: 1_000_700, price: 2999.9, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true });
+    expect(u).toMatchObject({ status: "entry_touched", entryTouchedAt: 1_000_700 });
+  });
+
   it("stop SELL tersentuh saat harga turun ke entry", () => {
     const s: StoredSetup = { ...base, direction: "SELL", entry_type: "stop", entry_price: 2990, entry_low: 2990, entry_high: 2993, invalidation: 2997, sl: 2995 };
     const u = evaluateStatus(s, { nowSec: 1_000_700, price: 2989.5, confirmCandles: [], mainBias: "bearish", dataOk: true });

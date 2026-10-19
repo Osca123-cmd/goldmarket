@@ -122,6 +122,9 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 `evaluateOutcome` (`src/core/outcome.ts`) dijalankan engine tiap menit untuk setup layak yang entry-nya tersentuh:
 - **WIN**: minimal TP1 tersentuh sebelum SL. Hasil = pips TP tertinggi yang tersentuh sebelum SL / TP3 / batas waktu.
 - **LOSS**: SL tersentuh sebelum TP1 (−pips SL).
+- Waktu entry tersentuh = awal candle M5 pertama (setelah setup dibuat) yang menyentuh entry, atau waktu tick harga bila tick lebih dulu. Candle M15 Twelve Data baru masuk saat bar tutup, jadi tidak dipakai sebagai waktu.
+- TP di candle M5 tempat entry tersentuh tidak dihitung (harga itu bisa terjadi sebelum entry); SL di candle itu tetap dihitung.
+- TP yang sudah tercatat tidak pernah turun lagi.
 - SL & TP dalam candle M5 yang sama → TP pada candle itu tidak dihitung (konservatif) dan ditandai ambigu.
 - **TIMEOUT**: 24 jam (`SIGNAL_MAX_HOLD_HOURS`) tanpa TP1 maupun SL → hasil = pips harga terakhir.
 - Spread/komisi/slippage tidak dikurangkan. Ini hasil level sinyal, bukan transaksi pengguna; jurnal tidak pernah diubah otomatis.
