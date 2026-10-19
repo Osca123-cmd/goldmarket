@@ -40,6 +40,8 @@ export interface EngineConfig {
   maxDistanceAtr: number;
   /** tidak membuat setup baru ±N menit di sekitar rilis FOMC/NFP/CPI/PPI (0 = nonaktif) */
   newsBlackoutMin: number;
+  /** SL tetap boleh berada maks. N pips di dalam invalidasi struktur (0 = ketat). Riset di backtest dulu sebelum dinaikkan untuk live. */
+  invalidationTolPips: number;
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
@@ -65,6 +67,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
   newsBlackoutMin: 30,
+  invalidationTolPips: 0,
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {

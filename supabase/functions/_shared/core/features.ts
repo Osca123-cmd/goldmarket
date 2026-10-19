@@ -44,6 +44,8 @@ export interface SetupFeatures {
   asiaRel: number | null;
   hourUtc: number;
   dow: number;
+  /** pips SL berada di DALAM invalidasi struktur (0 = SL di luar invalidasi; >0 hanya lolos karena toleransi) */
+  invSlackPips: number;
 }
 
 const sgn = (d: Direction) => (d === "BUY" ? 1 : -1);
@@ -121,5 +123,6 @@ export function setupFeatures(s: SetupCandidate, c: DetectContext): SetupFeature
     asiaRel: asia ? (d > 0 ? (s.entry > asia.high ? 1 : s.entry < asia.low ? -1 : 0) : s.entry < asia.low ? 1 : s.entry > asia.high ? -1 : 0) : null,
     hourUtc: t.getUTCHours(),
     dow: t.getUTCDay(),
+    invSlackPips: Number.isFinite(s.invalidation) ? r2(priceToPips(Math.max(0, d * (s.sl - s.invalidation)), spec)) : 0,
   };
 }

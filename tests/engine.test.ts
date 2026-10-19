@@ -6,7 +6,7 @@ import { analyzeMarket } from "../src/core/analysis.ts";
 import { closedAsOf } from "../src/core/dataQuality.ts";
 import { sliceClosed } from "../src/core/backtest.ts";
 import type { StoredSetup } from "../src/core/setups.ts";
-import type { SetupCandidate } from "../src/core/strategies.ts";
+import { invalidationGate, type SetupCandidate } from "../src/core/strategies.ts";
 import type { Timeframe } from "../src/core/types.ts";
 import { demoSeries, demoView } from "./helpers.ts";
 
@@ -196,5 +196,25 @@ describe("strategi liquidity sweep (riset)", () => {
 
   it("tidak aktif di sinyal live secara default", () => {
     expect(DEFAULT_ENGINE_CONFIG.strategies).not.toContain("liquidity_sweep");
+  });
+});
+
+describe("gate SL vs invalidasi + toleransi", () => {
+  it("SL 0,8 pip di dalam struktur (kasus Senin 07:00 WIB): gagal tanpa toleransi, lolos dengan toleransi 5 pips", () => {
+    // BUY entry 4179.65, SL 4174.65, invalidasi 4174.57 → SL 0.08 di dalam
+    expect(invalidationGate("BUY", 4179.65, 4174.65, 4174.57, 0).ok).toBe(false);
+    const g = invalidationGate("BUY", 4179.65, 4174.65, 4174.57, 0.5);
+    expect(g.ok).toBe(true);
+    expect(g.insideBy).toBeCloseTo(0.08, 6);
+  });
+  it("jauh di dalam struktur tetap gagal; SL di luar invalidasi lolos; SELL simetris", () => {
+    expect(invalidationGate("BUY", 4174.66, 4169.8, 4160.36, 0.5).ok).toBe(false); // 94 pips di dalam
+    expect(invalidationGate("BUY", 3000, 2995, 2996, 0)).toEqual({ between: true, insideBy: 0, ok: true });
+    expect(invalidationGate("SELL", 3000, 3005, 3005.3, 0.5).ok).toBe(true); // SELL: SL 0.3 di bawah invalidasi
+    expect(invalidationGate("SELL", 3000, 3005, 3006, 0.5).ok).toBe(false);
+    expect(invalidationGate("BUY", 2995, 2990, 2996, 0.5).between).toBe(false); // entry sudah melewati invalidasi
+  });
+  it("default live tetap ketat (0 pips)", () => {
+    expect(DEFAULT_ENGINE_CONFIG.invalidationTolPips).toBe(0);
   });
 });

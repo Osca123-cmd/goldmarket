@@ -3,7 +3,7 @@ import { TF_SECONDS } from "./types.ts";
 import { planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
 import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level } from "./structure.ts";
-import { levelsFromEntry, roundToTick, type TradeLevels } from "./instrument.ts";
+import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevels } from "./instrument.ts";
 import { scoreSetup, type ScoreBreakdown } from "./scoring.ts";
 import { asiaRange, prevDayRange } from "./features.ts";
 
@@ -77,6 +77,17 @@ interface Draft {
   reasons: string[];
 }
 
+/**
+ * Gate "SL vs invalidasi": invalidasi harus di antara entry dan SL. `insideBy` = seberapa jauh (harga)
+ * SL berada di dalam invalidasi (0 bila SL sudah di luarnya); lolos bila insideBy ≤ toleransi.
+ */
+export function invalidationGate(direction: Direction, entry: number, sl: number, invalidation: number, tolPrice: number) {
+  const s = direction === "BUY" ? 1 : -1;
+  const between = s * (entry - invalidation) > 0;
+  const insideBy = Math.max(0, s * (sl - invalidation));
+  return { between, insideBy, ok: between && insideBy <= tolPrice + 1e-9 };
+}
+
 function finalize(d: Draft, c: DetectContext): SetupCandidate {
   const { spec } = c.config;
   const plan = planFor(c.config, d.pair.context);
@@ -140,14 +151,17 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
   let invNote = "Tidak ada invalidasi.";
   if (d.invalidation != null) {
     const inv = d.invalidation;
-    const invBetween = s * (lv.entry - inv) > 0;
-    const slBeyond = s * (inv - lv.sl) >= 0;
-    invOk = invBetween && slBeyond;
-    invNote = !invBetween
+    const tolPips = c.config.invalidationTolPips;
+    const g = invalidationGate(d.direction, lv.entry, lv.sl, inv, pipsToPrice(tolPips, spec));
+    const insidePips = priceToPips(g.insideBy, spec);
+    invOk = g.ok;
+    invNote = !g.between
       ? `Entry ${lv.entry.toFixed(2)} sudah melewati invalidasi ${inv.toFixed(2)}.`
-      : !slBeyond
-        ? `SL tetap ${plan.slPips} pips (${lv.sl.toFixed(2)}) lebih sempit dari invalidasi struktur ${inv.toFixed(2)} — SL bisa kena sebelum ide setup batal. Setup tidak layak; level tidak diubah.`
-        : `Invalidasi ${inv.toFixed(2)} berada di antara entry dan SL ${lv.sl.toFixed(2)}.`;
+      : !g.ok
+        ? `SL tetap ${plan.slPips} pips (${lv.sl.toFixed(2)}) lebih sempit dari invalidasi struktur ${inv.toFixed(2)}${tolPips > 0 ? ` (${insidePips.toFixed(1)} pips di dalam, toleransi ${tolPips} pips)` : ""} — SL bisa kena sebelum ide setup batal. Setup tidak layak; level tidak diubah.`
+        : g.insideBy > 0
+          ? `SL ${lv.sl.toFixed(2)} hanya ${insidePips.toFixed(1)} pips di dalam invalidasi ${inv.toFixed(2)} — masih dalam toleransi ${tolPips} pips.`
+          : `Invalidasi ${inv.toFixed(2)} berada di antara entry dan SL ${lv.sl.toFixed(2)}.`;
   }
   gates.push({ key: "invalidation", label: "SL vs invalidasi", pass: invOk, note: invNote });
   const volOk = slPrice >= c.config.minSlAtrConfirm * atrConf && slPrice >= c.config.minSlAtrContext * atrCtx;

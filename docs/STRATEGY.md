@@ -69,7 +69,7 @@ Pola konfirmasi: engulfing, pin bar penolakan (wick ≥ 2× body, ≥ 55% range)
 |---|---|
 | Kualitas data | lolos §3 |
 | Struktur | ada level invalidasi struktur & bias utama tidak berlawanan |
-| SL vs invalidasi | invalidasi berada di antara entry dan SL (SL tetap tidak lebih sempit dari struktur) |
+| SL vs invalidasi | invalidasi berada di antara entry dan SL (SL tetap tidak lebih sempit dari struktur). `invalidationTolPips` (default 0) mengizinkan SL maks. N pips di dalam invalidasi; backtest meriset 5 pips dan mencatat `invSlackPips` per trade |
 | Volatilitas | jarak SL ≥ 1,0 × ATR TF konfirmasi dan ≥ 0,75 × ATR TF konteks |
 | Kelayakan risiko | RR TP2 setelah spread ≥ 1,5 dan spread ≤ 8 pips |
 

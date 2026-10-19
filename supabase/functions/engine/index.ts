@@ -896,7 +896,7 @@ async function news(db: Db) {
 // ---------------------------------------------------------------------------
 const BT_MONTHS = Number(env("BACKTEST_MONTHS", "12"));
 /** naikkan bila logika strategi/simulasi berubah → semua potongan dihitung ulang */
-const STRATEGY_CODE_VERSION = "2026-10-22.1"; // .1: riwayat XAU/USD Twelve Data (sumber ikut hash)
+const STRATEGY_CODE_VERSION = "2026-10-22.2"; // .2: riset toleransi invalidasi (BT_INV_TOL_PIPS)
 // pemanasan per TF (hari kalender): analisis memakai 220 bar terakhir (EMA200) — termasuk akhir pekan
 const BT_WARMUP_DAYS: Partial<Record<Timeframe, number>> = { H4: 60, H1: 16, M15: 5, M5: 4 };
 const BT_SOURCE_LABEL: Record<string, string> = {
@@ -905,6 +905,8 @@ const BT_SOURCE_LABEL: Record<string, string> = {
 };
 /** strategi yang ikut disimulasikan untuk RISET (tidak tampil di ringkasan/probabilitas live) */
 const RESEARCH_STRATEGIES: EngineConfig["strategies"] = ["liquidity_sweep"];
+/** toleransi invalidasi yang ikut disimulasikan untuk RISET; ringkasan live hanya memakai trade dengan invSlackPips ≤ toleransi live */
+const BT_INV_TOL_PIPS = 5;
 
 async function strategyVersion(cfg: EngineConfig, o: typeof DEFAULT_BT, source: string): Promise<string> {
   const { spec: _spec, ...strategy } = cfg;
@@ -932,13 +934,13 @@ function tradeRow(t: BacktestTrade, version: string, chunkStart: number) {
   };
 }
 
-async function loadTrades(db: Db, version: string): Promise<BacktestTrade[]> {
-  const out: BacktestTrade[] = [];
+async function loadTrades(db: Db, version: string): Promise<(BacktestTrade & { invSlack: number })[]> {
+  const out: (BacktestTrade & { invSlack: number })[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("backtest_trades").select("created_at,strategy,timeframe,direction,session,sl_pips,entry_touched,invalid_before,tp,ambiguous,pips").eq("version", version).order("created_at").range(from, from + 999);
+    const { data, error } = await db.from("backtest_trades").select("created_at,strategy,timeframe,direction,session,sl_pips,entry_touched,invalid_before,tp,ambiguous,pips,inv_slack:features->invSlackPips").eq("version", version).order("created_at").range(from, from + 999);
     if (error) throw new Error(`load trades: ${error.message}`);
     for (const r of data ?? []) {
-      out.push({ createdAt: sec(r.created_at)!, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, session: r.session, slPips: r.sl_pips, entryTouched: r.entry_touched, invalidBeforeEntry: r.invalid_before, tp: r.tp, ambiguous: r.ambiguous, pips: r.pips });
+      out.push({ createdAt: sec(r.created_at)!, strategy: r.strategy, timeframe: r.timeframe, direction: r.direction, session: r.session, slPips: r.sl_pips, entryTouched: r.entry_touched, invalidBeforeEntry: r.invalid_before, tp: r.tp, ambiguous: r.ambiguous, pips: r.pips, invSlack: Number(r.inv_slack ?? 0) });
     }
     if (!data || data.length < 1000) break;
   }
@@ -969,7 +971,11 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     bars[tf] = candles[tf]!.length;
   }
 
-  const btCfg: EngineConfig = { ...cfg, strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])] };
+  const btCfg: EngineConfig = {
+    ...cfg,
+    strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
+    invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
+  };
   const trades = runBacktestTrades(candles, btCfg, o, { fromSec: start, toSec: Math.min(end, nowSec) });
   await db.from("backtest_trades").delete().eq("version", version).eq("chunk_start", iso(start));
   for (let i = 0; i < trades.length; i += 500) {
@@ -979,8 +985,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   await db.from("backtest_chunks").upsert({ chunk_start: iso(start), version, computed_at: iso(nowSec), setups: trades.length, touched: trades.filter((t) => t.entryTouched).length }, { onConflict: "chunk_start,version" });
 
   // ---- ringkas ulang seluruh potongan versi ini ----
-  // ringkasan & probabilitas hanya untuk strategi yang aktif di sinyal live
-  const all = (await loadTrades(db, version)).filter((t) => (cfg.strategies as string[]).includes(t.strategy));
+  // ringkasan & probabilitas live: hanya strategi live dan trade yang lolos toleransi invalidasi live
+  const all = (await loadTrades(db, version)).filter((t) => (cfg.strategies as string[]).includes(t.strategy) && t.invSlack <= cfg.invalidationTolPips + 1e-9);
   const { count: chunks } = await db.from("backtest_chunks").select("chunk_start", { count: "exact", head: true }).eq("version", version);
   // versi baru belum lengkap → laporan & probabilitas versi lama tetap tampil (tidak diganti sampel kecil)
   const complete = (chunks ?? 0) >= expectedChunks(nowSec, BT_MONTHS);
