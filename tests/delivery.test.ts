@@ -45,6 +45,12 @@ describe("aturan pengiriman sinyal", () => {
     expect(deliveryBlock({ entryType: "limit" }, [], cfg, WIB(13, 59))).toBeNull();
     expect(deliveryBlock({ entryType: "limit" }, [], cfg, WIB(17))).toBeNull();
   });
+  it("entry stop dinonaktifkan sepanjang hari; limit/market tetap dikirim", () => {
+    const only = { delivery: { entryTypes: ["limit", "market"] as ("limit" | "market")[] } };
+    expect(deliveryBlock({ entryType: "stop" }, [], only, WIB(10))).toMatch(/Entry stop dinonaktifkan/);
+    expect(deliveryBlock({ entryType: "limit" }, [], only, WIB(15))).toBeNull();
+    expect(deliveryBlock({ entryType: "market" }, [], only, WIB(15))).toBeNull();
+  });
   it("tanpa aturan → tidak pernah menahan", () => {
     expect(deliveryBlock({ entryType: "limit" }, [setup({})], {}, WIB(15))).toBeNull();
   });

@@ -61,6 +61,8 @@ export interface DeliveryWindow {
 export interface DeliveryRules {
   /** hanya 1 sinyal hidup sekaligus (READY belum kena entry, atau berjalan sebelum TP1) */
   oneAtATime?: boolean;
+  /** jenis entry yang dikirim (sepanjang hari); tidak diisi = semua */
+  entryTypes?: EntryType[];
   windows?: DeliveryWindow[];
 }
 

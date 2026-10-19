@@ -120,7 +120,8 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 ### Aturan pengiriman sinyal live (`src/core/delivery.ts`, `engine_state.config.delivery`)
 Permintaan pengguna 19 Okt 2026, setelah volatilitas tiba-tiba saat pembukaan London. Hanya mengatur **pengiriman** — deteksi, SL/TP/RR, dan backtest tidak berubah; kandidat yang ditahan tidak disimpan sehingga bisa muncul lagi bila masih valid.
 - **1 sinyal sekaligus**: tidak ada sinyal baru selama masih ada READY layak yang belum kena entry, atau sinyal berjalan yang belum TP1. Setelah TP1 (SL di BE), selesai, batal, atau kedaluwarsa, sinyal berikutnya boleh dikirim.
-- **14.00–17.00 WIB**: hanya entry **stop** dan **market** (limit tidak dikirim), dan maks **1 sinyal per hari** di jendela itu.
+- **Entry stop dinonaktifkan** (20 Okt 2026): hasil live 19 Okt 1 WIN (+50, hanya TP1) / 3 LOSS (−190 pips); hanya entry **limit** dan **market** yang dikirim. Sinyal stop lama ditandai DIKECUALIKAN (tetap terlihat).
+- Jendela 14.00–17.00 WIB (hanya stop/market, maks 1 sinyal/hari) sempat aktif 19 Okt malam lalu dibuka kembali atas permintaan pengguna; mekanisme `windows` tetap tersedia di config.
 
 ### Sinyal yang dikecualikan
 Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded_reason`). Sinyal itu **tidak pernah dihapus**: tetap tampil di Riwayat Sinyal dengan badge DIKECUALIKAN dan alasannya, dan jumlahnya selalu ditampilkan di statistik.

@@ -7,6 +7,7 @@ import type { StoredSetup } from "./setups.ts";
  * maupun backtest; kandidat yang ditahan tidak disimpan sehingga bisa muncul lagi bila masih valid.
  *  - oneAtATime: tidak ada sinyal baru selama masih ada sinyal hidup — READY layak yang belum kena
  *    entry, atau sinyal berjalan yang belum TP1. Setelah TP1 (SL di BE) antrean bebas.
+ *  - entryTypes: hanya jenis entry ini yang dikirim (20 Okt: entry stop dinonaktifkan, hasil live buruk).
  *  - windows: di jam lokal [startHour, endHour) hanya jenis entry tertentu, maks N sinyal per hari.
  */
 export function isQueueBlocking(s: StoredSetup): boolean {
@@ -33,6 +34,7 @@ export function deliveryBlock(
 ): string | null {
   const rules = cfg.delivery;
   if (!rules) return null;
+  if (rules.entryTypes && !rules.entryTypes.includes(c.entryType)) return `Entry ${c.entryType} dinonaktifkan (hanya ${rules.entryTypes.join("/")}).`;
   if (rules.oneAtATime) {
     const live = known.find(isQueueBlocking);
     if (live) return `Menunggu sinyal ${live.direction} ${live.timeframe} ${live.entry_price.toFixed(2)} selesai atau mencapai TP1 (1 sinyal sekaligus).`;
