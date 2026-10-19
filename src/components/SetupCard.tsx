@@ -6,6 +6,7 @@ import { isActiveSignal, type SetupRow } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
 import { STRATEGY_LABEL } from "@/core/config";
 import { priceToPips } from "@/core/instrument";
+import { conflictText } from "@/core/conflict";
 import { DirBadge, ScoreBar, ago, cx, fmt, fmtTime } from "./ui";
 import { ProbabilityBox } from "./ProbabilityBox";
 
@@ -19,7 +20,7 @@ const STATUS_TONE: Record<SetupRow["status"], string> = {
 
 const ENTRY_TYPE_LABEL = { market: "Market", limit: "Limit", stop: "Stop" } as const;
 
-export function SetupCard({ s, price, tz, now, minScore, pipSize = 0.1 }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number }) {
+export function SetupCard({ s, price, tz, now, minScore, pipSize = 0.1, conflicts = [] }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number; conflicts?: SetupRow[] }) {
   const [open, setOpen] = useState(false);
   const dist = price != null ? priceToPips(Math.abs(price - s.entry_price), { symbol: "", pipSize, tickSize: 0.01, digits: 2, contractSize: 100, quoteCurrency: "USD" }) : s.distance_pips;
   const active = isActiveSignal(s);
@@ -34,10 +35,17 @@ export function SetupCard({ s, price, tz, now, minScore, pipSize = 0.1 }: { s: S
         <span className={cx("chip", STATUS_TONE[s.status])}>{OPPORTUNITY_STATUS_LABEL[s.status]}</span>
         {!s.eligible && <span className="chip border-sell/50 text-sell">Tidak layak</span>}
         {s.confirmed_at && <span className="chip border-buy/40 text-buy">Terkonfirmasi</span>}
+        {conflicts.length > 0 && <span className="chip border-warn/60 text-warn">⚠️ Bertentangan</span>}
         <div className="ml-auto">
           <ScoreBar score={s.score} min={minScore} />
         </div>
       </div>
+
+      {conflicts.length > 0 && (
+        <p className="mt-3 rounded-xl border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-warn">
+          ⚠️ Bertentangan dengan {conflicts.map(conflictText).join(", ")} — dua arah di harga berdekatan. Pilih salah satu, jangan ambil keduanya.
+        </p>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:grid-cols-7">
         <Lv label={`Entry (${ENTRY_TYPE_LABEL[s.entry_type]})`} v={fmt(s.entry_price)} sub={`Area ${fmt(s.entry_low)}–${fmt(s.entry_high)}`} />

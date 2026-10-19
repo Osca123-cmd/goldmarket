@@ -117,6 +117,9 @@ Backtest walk-forward berjalan **bertahap** (lihat §13): riwayat ±12 bulan PAX
 - 60% awal data = pengembangan, 40% akhir = pengujian. Yang ditampilkan hanya data uji, dengan n, periode, dan interval Wilson 95%.
 - Ditampilkan hanya bila n uji ≥ 30 (entry dan TP1). Jika tidak: “Probabilitas belum tersedia — validasi historis belum memadai.”
 
+### Sinyal bertentangan (peringatan, tidak memblokir)
+Dua setup **arah berlawanan** yang sama-sama masih hidup (menunggu entry atau sedang berjalan) dengan entry berdekatan (≤ jarak SL terbesar keduanya) diberi label **⚠️ Bertentangan** di kartu, alasan setup, notifikasi READY, dan notifikasi entry tersentuh (`src/core/conflict.ts`). Keduanya tetap dikirim dan dilacak; pengguna memilih salah satu. Contoh 19 Okt: BUY M30 4172,15 (support) dan SELL M15 4172,87 (support yang ditembus menjadi resistance).
+
 ## 10. Riwayat sinyal (hasil menurut feed) — terpisah dari jurnal
 
 `evaluateOutcome` (`src/core/outcome.ts`) dijalankan engine tiap menit untuk setup layak yang entry-nya tersentuh:

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SessionsCard } from "@/components/SessionsCard";
 import { SetupCard } from "@/components/SetupCard";
+import { findConflicts } from "@/core/conflict";
 import { useEffect, useState } from "react";
 import { Card, Disclaimer, Empty, StatusBadge, ago, cx, fmt, fmtTime, useNow } from "@/components/ui";
 import { LogoMark } from "@/components/Logo";
@@ -279,7 +280,7 @@ function Dashboard() {
           {active.length === 0 ? (
             <Empty title="Belum ada setup valid">Engine tidak memaksakan sinyal. Setup muncul hanya jika syarat data, struktur, invalidasi, dan risiko terpenuhi.</Empty>
           ) : (
-            active.slice(0, 3).map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />)
+            active.slice(0, 3).map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} conflicts={findConflicts(s, setups)} />)
           )}
         </div>
         <div className="min-w-0 xl:col-span-2">

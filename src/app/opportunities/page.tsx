@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SetupCard } from "@/components/SetupCard";
+import { findConflicts } from "@/core/conflict";
 import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
@@ -279,7 +280,7 @@ function LiveSignal() {
               <span className="text-sm font-semibold">{list.length} sinyal aktif · diperbarui realtime</span>
             </div>
             {list.map((s) => (
-              <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />
+              <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} conflicts={findConflicts(s, setups)} />
             ))}
           </div>
         )}
@@ -300,7 +301,7 @@ function LiveSignal() {
         </div>
         {f.status !== "active" && (
           <div className="mt-3 space-y-3">
-            {list.length === 0 ? <Empty title="Tidak ada peluang yang cocok">Ubah filter.</Empty> : list.map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />)}
+            {list.length === 0 ? <Empty title="Tidak ada peluang yang cocok">Ubah filter.</Empty> : list.map((s) => <SetupCard key={s.id} s={s} price={snapshot?.price ?? null} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} conflicts={findConflicts(s, setups)} />)}
           </div>
         )}
       </details>

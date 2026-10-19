@@ -77,6 +77,8 @@ for (let t = NOW - 3 * 86400; t <= NOW - 6 * 3600 && history.length < 8; t += 90
 if (setups[0]) {
   const p0 = demoPrice(NOW / 60);
   history.unshift({ ...setups[0], id: "00000000-0000-4000-9000-000000000099", direction: "SELL", timeframe: "M15", entry_price: p0 + 6, sl: p0 + 11, tp1: p0 + 1, tp2: p0 - 4, tp3: p0 - 9, status: "entry_touched", entry_touched_at: iso(NOW - 1800), outcome: "open", outcome_tp: 1, outcome_pips: null, outcome_note: "TP1 tersentuh, pelacakan berlanjut.", outcome_ambiguous: false });
+  // BUY berjalan di harga hampir sama → label "⚠️ Bertentangan" ikut diuji
+  history.unshift({ ...setups[0], id: "00000000-0000-4000-9000-000000000098", eligible: true, direction: "BUY", timeframe: "M30", entry_price: p0 + 5.3, sl: p0 - 1.7, tp1: p0 + 12.3, tp2: p0 + 19.3, tp3: p0 + 26.3, status: "entry_touched", entry_touched_at: iso(NOW - 900), outcome: "open", outcome_tp: 0, outcome_pips: null, outcome_note: "Menunggu TP/SL.", outcome_ambiguous: false });
 }
 console.log(`Riwayat sinyal fixture: ${history.length}`);
 const out = runEngineCycle({ nowSec: NOW, rawCandles: raw, price: demoPrice(NOW / 60), quoteTimeSec: NOW, spreadPips: 3, assumedSpreadPips: 3, feedStatus: "live", previousFeedStatus: "live", existing: [], config: DEFAULT_ENGINE_CONFIG });
@@ -224,6 +226,7 @@ for (const vp of viewports) {
     if (errors.length) problems.push(`${vp.name} ${p}: error JS ${errors.join(" | ")}`);
     const name = `${vp.name}-${p.replace(/\//g, "").replace("?bt", "-backtest") || "dashboard"}.png`;
     await page.screenshot({ path: join(OUT, name), fullPage: vp.name === "mobile" ? false : true });
+    if (p === "/opportunities/" && (await page.getByText("⚠️ Bertentangan").count()) === 0) problems.push(`${vp.name} ${p}: label "⚠️ Bertentangan" tidak tampil`);
     if (p === "/opportunities/") {
       // riwayat sinyal: baris berjalan bisa diketuk → tangga TP + floating
       const row = page.getByRole("button", { name: /TP1 ✓/ }).first();

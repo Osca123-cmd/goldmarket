@@ -243,6 +243,7 @@ function toStored(r: Record<string, any>): StoredSetup {
     eligible: r.eligible,
     confirmed_at_sec: sec(r.confirmed_at),
     entry_touched_at_sec: sec(r.entry_touched_at),
+    outcome: r.outcome ?? null,
   };
 }
 
