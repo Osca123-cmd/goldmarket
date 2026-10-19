@@ -34,8 +34,14 @@ describe("hasil sinyal menurut feed", () => {
     const r = evaluateOutcome({ ...base, candles: [], price: 3002, tpHitBefore: 1 });
     expect(r).toMatchObject({ outcome: "open", tpHit: 1 });
   });
+  it("TP tercatat tidak mengaktifkan BE sebelum TP benar-benar tersentuh di candle", () => {
+    // candle 1200 kembali ke entry sebelum TP1 (candle 1500) → belum BE; BE baru di candle 1800
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3003, 2999), bar(1500, 3006, 3001), bar(1800, 3002, 2999)], tpHitBefore: 1 });
+    expect(r).toMatchObject({ outcome: "win", tpHit: 1, closedAtSec: 1800 });
+  });
   it("SL setelah TP1 tercatat → WIN +50 pips", () => {
-    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3001, 2994)], tpHitBefore: 1 });
+    // TP1 tercatat dari tick pada 1100 (tidak terlihat di candle) → BE berlaku sejak itu
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3001, 2994)], tpHitBefore: 1, tpHitBeforeAtSec: 1100 });
     expect(r).toMatchObject({ outcome: "win", pips: 50, tpHit: 1, ambiguous: false });
   });
   it("TP di candle tempat entry tersentuh tidak dihitung; candle berikutnya dihitung", () => {

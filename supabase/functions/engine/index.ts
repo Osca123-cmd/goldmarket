@@ -525,7 +525,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   // ---- hasil sinyal menurut feed (Riwayat Sinyal; terpisah dari jurnal) ----
   const { data: tracking } = await db
     .from("setups")
-    .select("id,direction,timeframe,strategy,entry_price,sl,tp1,tp2,tp3,entry_touched_at,score,outcome,outcome_tp")
+    .select("id,direction,timeframe,strategy,entry_price,sl,tp1,tp2,tp3,entry_touched_at,score,outcome,outcome_tp,outcome_tp_at")
     .eq("status", "entry_touched")
     .eq("eligible", true)
     .or("outcome.is.null,outcome.eq.open")
@@ -546,9 +546,10 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       maxHoldSec: SIGNAL_MAX_HOLD_SEC,
       spec: cfg.spec,
       tpHitBefore: (t.outcome === "open" ? t.outcome_tp ?? 0 : 0) as 0 | 1 | 2 | 3,
+      tpHitBeforeAtSec: sec(t.outcome_tp_at),
     });
     if (r.outcome === (t.outcome ?? "") && r.tpHit === (t.outcome_tp ?? 0)) continue;
-    await db.from("setups").update({ outcome: r.outcome, outcome_tp: r.tpHit, outcome_pips: r.pips, outcome_at: r.closedAtSec ? iso(r.closedAtSec) : null, outcome_note: r.note, outcome_ambiguous: r.ambiguous }).eq("id", t.id);
+    await db.from("setups").update({ outcome: r.outcome, outcome_tp: r.tpHit, outcome_pips: r.pips, outcome_at: r.closedAtSec ? iso(r.closedAtSec) : null, outcome_note: r.note, outcome_ambiguous: r.ambiguous, outcome_tp_at: r.tpAtSec ? iso(r.tpAtSec) : null }).eq("id", t.id);
     if (r.outcome !== "open") {
       const label = r.outcome === "win" ? "WIN" : r.outcome === "loss" ? "LOSS" : "TIMEOUT";
       notifRows.push({
