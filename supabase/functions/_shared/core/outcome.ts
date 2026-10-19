@@ -31,6 +31,8 @@ export interface OutcomeInput {
   nowSec: number;
   maxHoldSec: number;
   spec: InstrumentSpec;
+  /** TP tertinggi yang sudah tercatat sebelumnya — tidak boleh turun bila candle sempat kosong/tertunda */
+  tpHitBefore?: 0 | 1 | 2 | 3;
 }
 
 export interface OutcomeResult {
@@ -46,7 +48,7 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
   const s = i.direction === "BUY" ? 1 : -1;
   const pipsOf = (price: number) => priceToPips(s * (price - i.entry), i.spec);
   const slPips = -Math.abs(pipsOf(i.sl));
-  let tpHit: 0 | 1 | 2 | 3 = 0;
+  let tpHit: 0 | 1 | 2 | 3 = i.tpHitBefore ?? 0;
   let ambiguous = false;
   // bar tempat entry tersentuh ikut dihitung (rentangnya bisa memuat SL/TP setelah sentuhan)
   const bars = i.candles.filter((c) => c.time + i.barSec > i.entryTouchedAtSec);

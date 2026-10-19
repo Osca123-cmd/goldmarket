@@ -30,6 +30,14 @@ describe("hasil sinyal menurut feed", () => {
     const t = evaluateOutcome({ ...base, candles: [bar(1200, 3003, 2998)], price: 3002, nowSec: 1000 + 86400 });
     expect(t).toMatchObject({ outcome: "timeout", pips: 20 });
   });
+  it("TP yang sudah tercatat tidak turun lagi walau harga kembali", () => {
+    const r = evaluateOutcome({ ...base, candles: [], price: 3002, tpHitBefore: 1 });
+    expect(r).toMatchObject({ outcome: "open", tpHit: 1 });
+  });
+  it("SL setelah TP1 tercatat → WIN +50 pips", () => {
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3001, 2994)], tpHitBefore: 1 });
+    expect(r).toMatchObject({ outcome: "win", pips: 50, tpHit: 1, ambiguous: false });
+  });
   it("grade dari skor", () => {
     expect([gradeOf(85), gradeOf(72), gradeOf(61), gradeOf(40), gradeOf(null)]).toEqual(["A+", "A", "B", "C", null]);
   });

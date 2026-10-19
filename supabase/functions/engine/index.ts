@@ -527,6 +527,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     .eq("eligible", true)
     .or("outcome.is.null,outcome.eq.open")
     .limit(100);
+  // M5 tidak termasuk TF analisis, jadi dimuat khusus agar sumbu SL/TP di antara tick harga ikut terhitung
+  const outcomeBars = tracking?.length ? await loadCandles(db, provider.id, "M5", 300) : [];
   for (const t of tracking ?? []) {
     const touched = sec(t.entry_touched_at);
     if (touched == null) continue;
@@ -536,12 +538,13 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       sl: t.sl,
       tps: [t.tp1, t.tp2, t.tp3],
       entryTouchedAtSec: touched,
-      candles: raw.M5 ?? [],
+      candles: outcomeBars,
       barSec: TF_SECONDS.M5,
       price: out.quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? price : null,
       nowSec: t0,
       maxHoldSec: SIGNAL_MAX_HOLD_SEC,
       spec: cfg.spec,
+      tpHitBefore: (t.outcome === "open" ? t.outcome_tp ?? 0 : 0) as 0 | 1 | 2 | 3,
     });
     if (r.outcome === (t.outcome ?? "") && r.tpHit === (t.outcome_tp ?? 0)) continue;
     await db.from("setups").update({ outcome: r.outcome, outcome_tp: r.tpHit, outcome_pips: r.pips, outcome_at: r.closedAtSec ? iso(r.closedAtSec) : null, outcome_note: r.note, outcome_ambiguous: r.ambiguous }).eq("id", t.id);
