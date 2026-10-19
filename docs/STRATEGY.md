@@ -123,6 +123,8 @@ Permintaan pengguna 19 Okt 2026, setelah volatilitas tiba-tiba saat pembukaan Lo
 - **Entry stop dinonaktifkan** (20 Okt 2026): hasil live 19 Okt 1 WIN (+50, hanya TP1) / 3 LOSS (−190 pips); hanya entry **limit** dan **market** yang dikirim. Sinyal stop lama ditandai DIKECUALIKAN (tetap terlihat).
 - Jendela 14.00–17.00 WIB (hanya stop/market, maks 1 sinyal/hari) sempat aktif 19 Okt malam lalu dibuka kembali atas permintaan pengguna; mekanisme `windows` tetap tersedia di config.
 
+- **Jam istirahat 23.10–05.00 WIB** (20 Okt 2026): tidak ada sinyal baru. Setup yang belum kena entry dibatalkan (kedaluwarsa) saat jam istirahat mulai; sinyal yang sudah berjalan tetap dilacak sampai selesai. Saat jam istirahat mulai, engine mengirim **rekap hari itu** (05.00–23.10 WIB): jumlah READY, entry tersentuh, WIN/LOSS/timeout, total pips, dan yang masih berjalan — tanpa sinyal yang dikecualikan.
+
 ### Sinyal yang dikecualikan
 Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded_reason`). Sinyal itu **tidak pernah dihapus**: tetap tampil di Riwayat Sinyal dengan badge DIKECUALIKAN dan alasannya, dan jumlahnya selalu ditampilkan di statistik.
 

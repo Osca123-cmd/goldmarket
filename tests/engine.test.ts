@@ -249,3 +249,30 @@ describe("label eksperimen", () => {
     expect(readyTitle("BUY", "M15", "", "liquidity_sweep")).toBe("🟢 READY BUY XAUUSD — M15 · 🧪 Eksperimen");
   });
 });
+
+describe("jam istirahat", () => {
+  const quiet = { label: "23.10–05.00 WIB", startHour: 23, startMinute: 10, endHour: 5, endMinute: 0, utcOffsetHours: 7 };
+  const cfg = mergeConfig({ delivery: { quiet } });
+  const t = Date.parse("2026-07-14T16:30:00Z") / 1000; // 23.30 WIB
+
+  it("setup belum kena entry dibatalkan, sinyal berjalan tetap dilacak, rekap dikirim, tidak ada sinyal baru", () => {
+    const probe = runEngineCycle(input(t, { config: cfg }));
+    const price = demoPrice(t / 60);
+    const dir = probe.analysis.mainBias === "bearish" ? "SELL" : "BUY";
+    const s = dir === "BUY" ? 1 : -1;
+    const base: StoredSetup = {
+      id: "p", identity_key: "p", strategy: "sd_reversal", direction: dir, timeframe: "M15", confirm_tf: "M15", entry_type: "limit",
+      entry_price: price - s * 50, entry_low: price - s * 52, entry_high: price - s * 50, invalidation: price - s * 60, sl: price - s * 55,
+      created_at_sec: t - 600, expires_at_sec: t + 7200, status: "approaching", eligible: true, confirmed_at_sec: null, entry_touched_at_sec: null,
+    };
+    const running: StoredSetup = { ...base, id: "r", identity_key: "r", status: "entry_touched", entry_touched_at_sec: t - 3600, outcome: "open", outcome_tp: 0 };
+    const out = runEngineCycle(input(t, { config: cfg, existing: [base, running] }));
+    expect(out.created).toEqual([]);
+    expect(out.changes.find((c) => c.id === "p")).toMatchObject({ to: "expired", events: ["expired"] });
+    expect(out.changes.find((c) => c.id === "r")).toMatchObject({ to: "entry_touched", events: [] });
+    const recap = out.notifications.find((n) => n.dedupeKey === "recap:2026-07-14");
+    expect(recap?.title).toMatch(/^📊 REKAP 14 Jul — 1 entry · 0W\/0L/);
+    expect(recap?.body).toMatch(/1 masih berjalan/);
+    expect(out.analysis.reasons[0]).toMatch(/^Jam istirahat 23.10–05.00 WIB/);
+  });
+});

@@ -58,11 +58,22 @@ export interface DeliveryWindow {
   maxPerDay: number;
 }
 
+export interface QuietHours {
+  label: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  utcOffsetHours: number;
+}
+
 export interface DeliveryRules {
   /** hanya 1 sinyal hidup sekaligus (READY belum kena entry, atau berjalan sebelum TP1) */
   oneAtATime?: boolean;
   /** jenis entry yang dikirim (sepanjang hari); tidak diisi = semua */
   entryTypes?: EntryType[];
+  /** jam istirahat: tidak ada sinyal baru (boleh melewati tengah malam); rekap hari dikirim saat mulai */
+  quiet?: QuietHours;
   windows?: DeliveryWindow[];
 }
 

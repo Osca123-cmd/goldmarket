@@ -245,6 +245,8 @@ function toStored(r: Record<string, any>): StoredSetup {
     entry_touched_at_sec: sec(r.entry_touched_at),
     outcome: r.outcome ?? null,
     outcome_tp: r.outcome_tp ?? null,
+    outcome_pips: r.outcome_pips ?? null,
+    excluded: r.excluded ?? false,
   };
 }
 

@@ -6,7 +6,7 @@ import { assessQuality, closedAsOf, type QualityReport } from "./dataQuality.ts"
 import { detectAll, type SetupCandidate } from "./strategies.ts";
 import { dedupeBatch, dedupeCandidate, evaluateStatus, type StoredSetup } from "./setups.ts";
 import { priceToPips } from "./instrument.ts";
-import { deliveryBlock } from "./delivery.ts";
+import { dailyRecap, deliveryBlock, inQuiet, quietReason } from "./delivery.ts";
 import { sessionAt } from "./sessions.ts";
 
 export type NotificationKind = "new_setup" | "confirmed" | "entry_touched" | "invalid" | "expired" | "connection" | "signal_result" | "news_event";
@@ -173,10 +173,11 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
   }
 
   // Evaluasi status setup aktif yang sudah tersimpan.
+  const quiet = cfg.delivery?.quiet && inQuiet(i.nowSec, cfg.delivery.quiet) ? cfg.delivery.quiet : null;
   const changes: StatusChange[] = [];
   for (const s of i.existing) {
     if (!ACTIVE_STATUSES.includes(s.status)) continue;
-    const upd = evaluateStatus(s, {
+    let upd = evaluateStatus(s, {
       nowSec: i.nowSec,
       price: quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? i.price : null,
       confirmCandles: i.rawCandles[s.confirm_tf] ?? [],
@@ -184,6 +185,10 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       mainBias: analysis.mainBias,
       dataOk: quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec && i.feedStatus !== "disconnected",
     });
+    // jam istirahat: setup yang belum kena entry tidak dibiarkan menunggu semalaman (sinyal berjalan tetap dilacak)
+    if (quiet && (upd.status === "approaching" || upd.status === "awaiting_confirmation")) {
+      upd = { ...upd, status: "expired", reason: `${quietReason(quiet)} Setup yang belum kena entry dibatalkan.`, events: ["expired"] };
+    }
     const dist = i.price != null ? priceToPips(Math.abs(i.price - s.entry_price), cfg.spec) : null;
     if (upd.status !== s.status || upd.confirmedAt !== s.confirmed_at_sec || upd.events.length > 0) {
       changes.push({ id: s.id, from: s.status, to: upd.status, reason: upd.reason, confirmedAt: upd.confirmedAt, entryTouchedAt: upd.entryTouchedAt, events: upd.events, distancePips: dist });
@@ -214,6 +219,22 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       body: bad.includes(i.feedStatus) ? "Koneksi data bermasalah. Sinyal baru dihentikan sampai data kembali valid." : "Koneksi data pulih.",
       severity: bad.includes(i.feedStatus) ? "danger" : "success",
     });
+  }
+
+  // jam istirahat: rekap hari trading (sekali per hari via dedupe) + alasan di analisis
+  if (quiet) {
+    const r = dailyRecap(i.existing, i.nowSec, quiet);
+    const day = new Date((r.dayStartSec + quiet.utcOffsetHours * 3600) * 1000);
+    const label = day.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
+    const pips = `${r.pips > 0 ? "+" : ""}${r.pips.toFixed(1)} pips`;
+    notifications.push({
+      kind: "signal_result",
+      dedupeKey: `recap:${day.toISOString().slice(0, 10)}`,
+      title: `📊 REKAP ${label} — ${r.entries} entry · ${r.wins}W/${r.losses}L · ${pips}`,
+      body: `Hari ini: ${r.ready} sinyal READY, ${r.entries} entry tersentuh, ${r.wins} WIN / ${r.losses} LOSS${r.timeouts ? ` / ${r.timeouts} timeout` : ""}, total ${pips}${r.running ? `; ${r.running} masih berjalan (dilacak sampai selesai)` : ""}. Belum termasuk spread/komisi; hasil level sinyal, bukan transaksi Anda. ${quietReason(quiet)}`,
+      severity: r.pips >= 0 ? "success" : "warning",
+    });
+    analysis.reasons.unshift(quietReason(quiet));
   }
 
   const activeAfter = changes.filter((c) => ACTIVE_STATUSES.includes(c.to));

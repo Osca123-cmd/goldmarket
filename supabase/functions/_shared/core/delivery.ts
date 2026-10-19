@@ -1,4 +1,4 @@
-import type { EngineConfig, DeliveryWindow } from "./config.ts";
+import type { EngineConfig, DeliveryWindow, QuietHours } from "./config.ts";
 import type { EntryType } from "./types.ts";
 import type { StoredSetup } from "./setups.ts";
 
@@ -9,6 +9,8 @@ import type { StoredSetup } from "./setups.ts";
  *    entry, atau sinyal berjalan yang belum TP1. Setelah TP1 (SL di BE) antrean bebas.
  *  - entryTypes: hanya jenis entry ini yang dikirim (20 Okt: entry stop dinonaktifkan, hasil live buruk).
  *  - windows: di jam lokal [startHour, endHour) hanya jenis entry tertentu, maks N sinyal per hari.
+ *  - quiet: jam istirahat (mis. 23.10–05.00 WIB) tanpa sinyal baru; setup yang belum kena entry
+ *    dikedaluwarsakan, sinyal berjalan tetap dilacak, dan rekap hari dikirim sekali.
  */
 export function isQueueBlocking(s: StoredSetup): boolean {
   if (s.status === "approaching" || s.status === "awaiting_confirmation") return s.eligible;
@@ -26,6 +28,66 @@ const inWindow = (sec: number, w: DeliveryWindow) => {
   return h >= w.startHour && h < w.endHour;
 };
 
+/** awalan alasan jam istirahat (dipakai UI untuk judul kartu) */
+export const QUIET_PREFIX = "Jam istirahat";
+
+/** menit lokal sejak tengah malam */
+const localMinute = (sec: number, q: QuietHours) => Math.floor(((sec + q.utcOffsetHours * 3600) % 86400) / 60);
+const startMin = (q: QuietHours) => q.startHour * 60 + q.startMinute;
+const endMin = (q: QuietHours) => q.endHour * 60 + q.endMinute;
+const hhmm = (h: number, m: number) => `${String(h).padStart(2, "0")}.${String(m).padStart(2, "0")}`;
+
+export function inQuiet(sec: number, q: QuietHours): boolean {
+  const m = localMinute(sec, q);
+  const a = startMin(q);
+  const b = endMin(q);
+  return a > b ? m >= a || m < b : m >= a && m < b;
+}
+
+export function quietReason(q: QuietHours): string {
+  return `${QUIET_PREFIX} ${q.label} — sinyal baru berhenti, lanjut ${hhmm(q.endHour, q.endMinute)}.`;
+}
+
+export interface DayRecap {
+  /** awal hari trading: tengah malam lokal (detik UTC) */
+  dayStartSec: number;
+  ready: number;
+  entries: number;
+  wins: number;
+  losses: number;
+  timeouts: number;
+  pips: number;
+  running: number;
+}
+
+/**
+ * Rekap hari trading = dari akhir jam istirahat (mis. 05.00) sampai awal jam istirahat (23.10) hari lokal
+ * itu. Bila sekarang sebelum akhir jam istirahat (lewat tengah malam), yang direkap hari sebelumnya.
+ * Setup yang dikecualikan pengguna tidak dihitung.
+ */
+export function dailyRecap(setups: StoredSetup[], nowSec: number, q: QuietHours): DayRecap {
+  const off = q.utcOffsetHours * 3600;
+  let day = Math.floor((nowSec + off) / 86400);
+  if (localMinute(nowSec, q) < endMin(q)) day -= 1;
+  const midnight = day * 86400 - off;
+  const from = midnight + endMin(q) * 60;
+  const to = midnight + startMin(q) * 60;
+  const inDay = (t: number | null) => t != null && t >= from && t < to;
+  const list = setups.filter((s) => s.eligible && !s.excluded);
+  const touched = list.filter((s) => inDay(s.entry_touched_at_sec));
+  const closed = touched.filter((s) => s.outcome === "win" || s.outcome === "loss" || s.outcome === "timeout");
+  return {
+    dayStartSec: midnight,
+    ready: list.filter((s) => inDay(s.created_at_sec)).length,
+    entries: touched.length,
+    wins: closed.filter((s) => s.outcome === "win").length,
+    losses: closed.filter((s) => s.outcome === "loss").length,
+    timeouts: closed.filter((s) => s.outcome === "timeout").length,
+    pips: closed.reduce((a, s) => a + (s.outcome_pips ?? 0), 0),
+    running: touched.filter((s) => s.outcome == null || s.outcome === "open").length,
+  };
+}
+
 export function deliveryBlock(
   c: { entryType: EntryType },
   known: StoredSetup[],
@@ -34,6 +96,7 @@ export function deliveryBlock(
 ): string | null {
   const rules = cfg.delivery;
   if (!rules) return null;
+  if (rules.quiet && inQuiet(nowSec, rules.quiet)) return quietReason(rules.quiet);
   if (rules.entryTypes && !rules.entryTypes.includes(c.entryType)) return `Entry ${c.entryType} dinonaktifkan (hanya ${rules.entryTypes.join("/")}).`;
   if (rules.oneAtATime) {
     const live = known.find(isQueueBlocking);

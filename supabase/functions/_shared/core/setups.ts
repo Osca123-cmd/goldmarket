@@ -28,6 +28,9 @@ export interface StoredSetup {
   /** hasil sinyal menurut feed & TP tertinggi tercapai (untuk aturan pengiriman 1 sinyal sekaligus) */
   outcome?: string | null;
   outcome_tp?: number | null;
+  outcome_pips?: number | null;
+  /** dikecualikan pengguna dari statistik/rekap */
+  excluded?: boolean;
 }
 
 export type DedupeVerdict = { ok: true } | { ok: false; reason: string };

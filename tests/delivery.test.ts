@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deliveryBlock } from "../src/core/delivery.ts";
+import { dailyRecap, deliveryBlock, inQuiet } from "../src/core/delivery.ts";
 import type { StoredSetup } from "../src/core/setups.ts";
 import type { DeliveryRules } from "../src/core/config.ts";
 
@@ -50,6 +50,27 @@ describe("aturan pengiriman sinyal", () => {
     expect(deliveryBlock({ entryType: "stop" }, [], only, WIB(10))).toMatch(/Entry stop dinonaktifkan/);
     expect(deliveryBlock({ entryType: "limit" }, [], only, WIB(15))).toBeNull();
     expect(deliveryBlock({ entryType: "market" }, [], only, WIB(15))).toBeNull();
+  });
+  const quiet = { label: "23.10–05.00 WIB", startHour: 23, startMinute: 10, endHour: 5, endMinute: 0, utcOffsetHours: 7 };
+  it("jam istirahat 23.10–05.00 WIB melewati tengah malam", () => {
+    expect([WIB(23, 9), WIB(23, 10), WIB(2), WIB(4, 59), WIB(5)].map((t) => inQuiet(t, quiet))).toEqual([false, true, true, true, false]);
+    const q = { delivery: { quiet } };
+    expect(deliveryBlock({ entryType: "limit" }, [], q, WIB(23, 30))).toMatch(/^Jam istirahat 23.10–05.00 WIB — sinyal baru berhenti, lanjut 05.00/);
+    expect(deliveryBlock({ entryType: "limit" }, [], q, WIB(9))).toBeNull();
+  });
+  it("rekap hari 05.00–23.10 WIB: tanpa excluded, menghitung yang masih berjalan, lewat tengah malam = hari sebelumnya", () => {
+    const touched = (h: number, o: Partial<StoredSetup>) => setup({ id: `s${h}`, status: "entry_touched", created_at_sec: WIB(h) - 600, entry_touched_at_sec: WIB(h), ...o });
+    const list = [
+      touched(6, { outcome: "win", outcome_pips: 100 }),
+      touched(12, { outcome: "loss", outcome_pips: -50 }),
+      touched(15, { outcome: "loss", outcome_pips: -70, excluded: true }),
+      touched(22, { outcome: "open", outcome_pips: null }),
+      touched(4, { outcome: "win", outcome_pips: 50 }), // 04.00 = sebelum hari trading
+      setup({ id: "r", created_at_sec: WIB(20), status: "expired" }),
+    ];
+    const r = dailyRecap(list, WIB(23, 15), quiet);
+    expect(r).toMatchObject({ ready: 4, entries: 3, wins: 1, losses: 1, timeouts: 0, pips: 50, running: 1 });
+    expect(dailyRecap(list, WIB(2, 0, 1), quiet)).toEqual(r);
   });
   it("tanpa aturan → tidak pernah menahan", () => {
     expect(deliveryBlock({ entryType: "limit" }, [setup({})], {}, WIB(15))).toBeNull();

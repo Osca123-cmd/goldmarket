@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SetupCard } from "@/components/SetupCard";
+import { QUIET_PREFIX } from "@/core/delivery";
 import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
@@ -196,8 +197,9 @@ function LiveSignal() {
   const runningCount = counted.filter((h) => isRunningSignal(h)).length;
   const totalPips = counted.reduce((a, h) => a + (h.outcome !== "open" ? (h.outcome_pips ?? 0) : 0), 0);
 
+  const quietLine = analysis?.reasons?.[0]?.startsWith(QUIET_PREFIX) ? analysis.reasons[0] : null;
   const title =
-    feed === "market_closed" ? "Pasar Sedang Tutup" : analysis && !analysis.quality_ok ? "Sinyal Dijeda — Data Belum Valid" : !mon.active ? "Monitoring Terganggu" : "Menunggu Konfirmasi";
+    feed === "market_closed" ? "Pasar Sedang Tutup" : quietLine ? `Jam Istirahat — lanjut ${quietLine.match(/lanjut (\d{2}\.\d{2})/)?.[1] ?? "05.00"} WIB` : analysis && !analysis.quality_ok ? "Sinyal Dijeda — Data Belum Valid" : !mon.active ? "Monitoring Terganggu" : "Menunggu Konfirmasi";
 
   const sel = (key: keyof typeof f, label: string, opts: [string, string][]) => (
     <label className="min-w-0">
