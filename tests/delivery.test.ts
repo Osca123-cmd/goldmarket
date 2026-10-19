@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dailyRecap, deliveryBlock, inQuiet } from "../src/core/delivery.ts";
+import { dailyRecap, deliveryBlock, inQuiet, lastResetSec, periodStart } from "../src/core/delivery.ts";
 import type { StoredSetup } from "../src/core/setups.ts";
 import type { DeliveryRules } from "../src/core/config.ts";
 
@@ -71,6 +71,18 @@ describe("aturan pengiriman sinyal", () => {
     const r = dailyRecap(list, WIB(23, 15), quiet);
     expect(r).toMatchObject({ ready: 4, entries: 3, wins: 1, losses: 1, timeouts: 0, pips: 50, running: 1 });
     expect(dailyRecap(list, WIB(2, 0, 1), quiet)).toEqual(r);
+  });
+  it("reset tampilan harian di 23.10 WIB", () => {
+    expect(lastResetSec(WIB(23, 9))).toBe(WIB(23, 10, -1));
+    expect(lastResetSec(WIB(23, 10))).toBe(WIB(23, 10));
+    expect(lastResetSec(WIB(2, 0, 1))).toBe(WIB(23, 10));
+  });
+  it("periode Overall Performance: hari trading, Senin, tanggal 1 (WIB)", () => {
+    const now = WIB(10); // Selasa 20 Okt 2026 10.00 WIB
+    expect(periodStart("day", now)).toBe(WIB(23, 10, -1));
+    expect(periodStart("week", now)).toBe(WIB(0, 0, -1)); // Senin 19 Okt 00.00 WIB
+    expect(periodStart("month", now)).toBe(Date.UTC(2026, 9, 1) / 1000 - 7 * 3600);
+    expect(periodStart("all", now)).toBe(0);
   });
   it("tanpa aturan → tidak pernah menahan", () => {
     expect(deliveryBlock({ entryType: "limit" }, [setup({})], {}, WIB(15))).toBeNull();

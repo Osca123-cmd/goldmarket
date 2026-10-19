@@ -8,6 +8,7 @@ import { cx, fmtTime } from "./ui";
 import { priceToPips } from "@/core/instrument";
 import { PushToggle } from "./PushToggle";
 import { readyTitle } from "@/core/engine";
+import { lastResetSec } from "@/core/delivery";
 
 interface Toast {
   key: string;
@@ -118,7 +119,9 @@ export function NotificationCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setups, snapshot?.price, settings]);
 
-  const visible = notifications.filter(allowed);
+  // reset tampilan harian 23.10 WIB: lonceng hanya berisi notifikasi hari trading berjalan (data tetap tersimpan)
+  const resetAt = lastResetSec(Math.floor(Date.now() / 1000)) * 1000;
+  const visible = notifications.filter((n) => allowed(n) && Date.parse(n.created_at) >= resetAt);
   const unread = visible.filter((n) => !readIds.has(n.id)).length;
 
   const markAllRead = async () => {

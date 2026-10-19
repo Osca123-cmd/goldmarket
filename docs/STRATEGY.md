@@ -125,6 +125,8 @@ Permintaan pengguna 19 Okt 2026, setelah volatilitas tiba-tiba saat pembukaan Lo
 
 - **Jam istirahat 23.10–05.00 WIB** (20 Okt 2026): tidak ada sinyal baru. Setup yang belum kena entry dibatalkan (kedaluwarsa) saat jam istirahat mulai; sinyal yang sudah berjalan tetap dilacak sampai selesai. Saat jam istirahat mulai, engine mengirim **rekap hari itu** (05.00–23.10 WIB): jumlah READY, entry tersentuh, WIN/LOSS/timeout, total pips, dan yang masih berjalan — tanpa sinyal yang dikecualikan.
 
+- **Reset tampilan harian 23.10 WIB**: Signal History di halaman Peluang dan lonceng notifikasi hanya menampilkan hari trading berjalan (plus sinyal yang masih berjalan). Tidak ada data yang dihapus — panel **Overall Performance** (Day/Week/Month/All) dan Jurnal → Sinyal tetap memuat semuanya. Day = sejak reset 23.10 WIB; Week = sejak Senin 00.00 WIB; Month = sejak tanggal 1 (WIB).
+
 ### Sinyal yang dikecualikan
 Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded_reason`). Sinyal itu **tidak pernah dihapus**: tetap tampil di Riwayat Sinyal dengan badge DIKECUALIKAN dan alasannya, dan jumlahnya selalu ditampilkan di statistik.
 

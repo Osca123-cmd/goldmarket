@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { useMarket } from "@/components/MarketContext";
 import { SetupCard } from "@/components/SetupCard";
-import { QUIET_PREFIX } from "@/core/delivery";
+import { QUIET_PREFIX, lastResetSec } from "@/core/delivery";
+import { OverallPerformance } from "@/components/OverallPerformance";
 import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
@@ -164,7 +165,7 @@ function Watching({ analysis, snapshot, pipSize }: { analysis: AnalysisRow | nul
 function LiveSignal() {
   const { setups, snapshot, analysis } = useMarket();
   const { settings } = useAuth();
-  const history = useSignalHistory(100);
+  const history = useSignalHistory(1000);
   const now = useNow(1000);
   const tz = settings?.display_tz ?? "Asia/Jakarta";
   const feed = effectiveStatus(snapshot, now);
@@ -189,7 +190,10 @@ function LiveSignal() {
       }),
     [setups, f, settings],
   );
-  const hist = history.data ?? [];
+  const allHist = history.data ?? [];
+  // reset tampilan harian 23.10 WIB: hanya sinyal hari trading berjalan + yang masih berjalan (data tetap tersimpan)
+  const resetAt = lastResetSec(Math.floor(now / 1000)) * 1000;
+  const hist = allHist.filter((h) => isRunningSignal(h) || (h.entry_touched_at != null && Date.parse(h.entry_touched_at) >= resetAt));
   const counted = hist.filter((h) => !h.excluded);
   const excludedCount = hist.length - counted.length;
   const closed = counted.filter((h) => h.outcome === "win" || h.outcome === "loss");
@@ -309,8 +313,10 @@ function LiveSignal() {
         )}
       </details>
 
+      <OverallPerformance history={allHist} tz={tz} now={now} />
+
       <HistoryPanel
-        title="Signal History"
+        title="Signal History · hari ini"
         summary={
           closed.length || runningCount ? (
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
@@ -337,7 +343,7 @@ function LiveSignal() {
         }
       >
         {hist.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted">Belum ada sinyal yang entry-nya tersentuh. Riwayat terisi otomatis dari engine.</p>
+          <p className="px-5 py-8 text-center text-sm text-muted">Belum ada sinyal hari ini. Riwayat direset otomatis pukul 23.10 WIB; riwayat lengkap ada di Jurnal → Sinyal dan panel Overall Performance.</p>
         ) : (
           hist.map((h) => (
             <SignalHistoryItem key={h.id} s={h} tz={tz} price={snapshot?.price ?? null} grade={gradeOf(h.score)} time={`${relTime(h.entry_touched_at, now)} · ${STRATEGY_LABEL[h.strategy]}`} />

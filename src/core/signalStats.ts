@@ -38,6 +38,8 @@ export interface SignalStats {
   wins: number;
   losses: number;
   timeouts: number;
+  /** ditutup di break-even tanpa TP (aturan BE kita menghitung BE setelah TP1 sebagai WIN, jadi biasanya 0) */
+  be: number;
   winRate: number | null;
   totalPips: number;
   avgPips: number | null;
@@ -55,7 +57,7 @@ export interface SignalStats {
   calendar: Record<string, { net: number; trades: number }>;
 }
 
-const CLOSED = new Set(["win", "loss", "timeout"]);
+const CLOSED = new Set(["win", "loss", "timeout", "be"]);
 
 function group(rows: SignalResultRow[], keyOf: (r: SignalResultRow) => string): SignalGroup[] {
   const m = new Map<string, SignalGroup>();
@@ -111,7 +113,8 @@ export function computeSignalStats(rows: SignalResultRow[], tz: string): SignalS
     excluded: done.length - closed.length,
     wins: wins.length,
     losses: losses.length,
-    timeouts: closed.length - wins.length - losses.length,
+    timeouts: closed.filter((r) => r.outcome === "timeout").length,
+    be: closed.filter((r) => r.outcome === "be").length,
     winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : null,
     totalPips: sum(closed),
     avgPips: closed.length ? sum(closed) / closed.length : null,

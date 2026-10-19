@@ -197,7 +197,8 @@ for (const vp of viewports) {
   await ctx.addInitScript(([k, v]) => {
     if (!location.pathname.startsWith("/login")) localStorage.setItem(k, v);
   }, [`sb-${REF}-auth-token`, JSON.stringify(session)]);
-  if (process.env.FIXED_CLOCK) await ctx.clock.setFixedTime(new Date(NOW * 1000)); // opsional: waktu tetap
+  // waktu tetap = NOW fixture, supaya reset tampilan harian 23.10 WIB tidak menyaring semua fixture
+  await ctx.clock.setFixedTime(new Date(NOW * 1000));
   await ctx.route(`https://${REF}.supabase.co/**`, mockSupabase);
   await ctx.route("https://s3.tradingview.com/**", (r) => r.abort());
   await ctx.route("https://fonts.googleapis.com/**", (r) => r.abort());
@@ -226,6 +227,8 @@ for (const vp of viewports) {
     if (errors.length) problems.push(`${vp.name} ${p}: error JS ${errors.join(" | ")}`);
     const name = `${vp.name}-${p.replace(/\//g, "").replace("?bt", "-backtest") || "dashboard"}.png`;
     await page.screenshot({ path: join(OUT, name), fullPage: vp.name === "mobile" ? false : true });
+    if (p === "/opportunities/" && (await page.getByText("Overall Performance").count()) === 0) problems.push(`${vp.name} ${p}: panel Overall Performance tidak tampil`);
+    if (p === "/opportunities/") await page.getByLabel("Overall performance").screenshot({ path: join(OUT, `${vp.name}-overall-performance.png`) }).catch(() => {});
     if (p === "/opportunities/" && (await page.getByText("DIKECUALIKAN").count()) === 0) problems.push(`${vp.name} ${p}: badge "DIKECUALIKAN" tidak tampil`);
     if (p === "/opportunities/") {
       // riwayat sinyal: baris berjalan bisa diketuk → tangga TP + floating

@@ -20,7 +20,7 @@ describe("statistik sinyal otomatis", () => {
   const s = computeSignalStats(rows, "Asia/Jakarta");
 
   it("menghitung win rate tanpa timeout dan memisahkan sinyal berjalan", () => {
-    expect(s).toMatchObject({ closed: 6, running: 1, excluded: 1, wins: 2, losses: 3, timeouts: 1, winRate: 0.4 });
+    expect(s).toMatchObject({ closed: 6, running: 1, excluded: 1, wins: 2, losses: 3, timeouts: 1, be: 0, winRate: 0.4 });
   });
   it("total, rata-rata, profit factor, drawdown, dan runtun kalah", () => {
     expect(s.totalPips).toBe(102);
