@@ -990,7 +990,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     // hanya strategi yang disimulasikan (urutan tetap), supaya strategi live baru tidak mengubah hash
     expiryBars: Object.fromEntries(RESEARCH_STRATEGIES.map((st) => [st, cfg.expiryBars[st]])) as EngineConfig["expiryBars"],
     invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
-    minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
+    // dipatok (bukan min dengan live): live boleh lebih longgar (0,5 sejak 20 Okt) tanpa mengubah simulasi & hash riset
+    minSlAtrContext: BT_MIN_SL_ATR_CTX,
     // aturan pengiriman live tidak disimulasikan; undefined → tidak masuk hash versi
     delivery: undefined,
     // bonus skor H4 khusus live; undefined → simulasi & hash versi backtest tidak berubah
