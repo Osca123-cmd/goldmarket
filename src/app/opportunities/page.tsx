@@ -13,7 +13,7 @@ import { Disclaimer, Empty, cx, fmt, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { effectiveStatus, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow, type Snapshot } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
-import { STRATEGY_LABEL } from "@/core/config";
+import { RETIRED_STRATEGIES, STRATEGY_LABEL } from "@/core/config";
 import { gradeOf } from "@/core/outcome";
 import type { FeedStatus, OpportunityStatus } from "@/core/types";
 
@@ -190,6 +190,15 @@ function LiveSignal() {
       }),
     [setups, f, settings],
   );
+  // strategi aktif dulu; yang sudah dimatikan hanya muncul bila masih ada setup lamanya
+  const strategyOptions = useMemo(() => {
+    const present = new Set(setups.map((s) => s.strategy));
+    const entries = Object.entries(STRATEGY_LABEL) as [keyof typeof STRATEGY_LABEL, string][];
+    return [
+      ...entries.filter(([k]) => !RETIRED_STRATEGIES.includes(k)),
+      ...entries.filter(([k]) => RETIRED_STRATEGIES.includes(k) && present.has(k)).map(([k, v]) => [k, `${v} · nonaktif`] as [typeof k, string]),
+    ];
+  }, [setups]);
   const allHist = history.data ?? [];
   // reset tampilan harian 23.10 WIB: hanya sinyal hari trading berjalan + yang masih berjalan (data tetap tersimpan)
   const resetAt = lastResetSec(Math.floor(now / 1000)) * 1000;
@@ -299,8 +308,8 @@ function LiveSignal() {
         <summary className="cursor-pointer text-sm font-semibold">Filter & semua peluang</summary>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           {sel("dir", "Arah", [["", "Semua"], ["BUY", "BUY"], ["SELL", "SELL"]])}
-          {sel("tf", "Timeframe", [["", "Semua"], ["M15", "M15"], ["H1", "H1"]])}
-          {sel("strategy", "Strategi", [["", "Semua"], ...Object.entries(STRATEGY_LABEL)])}
+          {sel("tf", "Timeframe", [["", "Semua"], ["M15", "M15"], ["M30", "M30"], ...(setups.some((s) => s.timeframe === "H1") ? [["H1", "H1 (lama)"] as [string, string]] : [])])}
+          {sel("strategy", "Strategi", [["", "Semua"], ...strategyOptions])}
           {sel("minScore", "Skor minimum", [["", "Sesuai pengaturan"], ["0", "0"], ["40", "40"], ["50", "50"], ["60", "60"], ["70", "70"], ["80", "80"]])}
           {sel("session", "Sesi", [["", "Semua"], ...Object.entries(SESSION_LABEL)])}
           {sel("status", "Status", [["active", "Aktif"], ["all", "Semua"], ...(Object.entries(OPPORTUNITY_STATUS_LABEL) as [OpportunityStatus, string][])])}

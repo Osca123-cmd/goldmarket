@@ -136,6 +136,12 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
   return cfg.planByTf?.[tf] ?? cfg.plan;
 }
 
+/**
+ * Strategi yang sudah dimatikan di sinyal live (engine_state.config.strategies, 20 Okt 2026). Hanya untuk
+ * tampilan filter: setup lamanya tetap bisa dicari dengan label "nonaktif". Perbarui bila susunan live berubah.
+ */
+export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "breakout_retest", "liquidity_sweep"];
+
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
 export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip"];
 

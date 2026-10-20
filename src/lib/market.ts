@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import type { Candle, FeedStatus, Timeframe } from "@/core/types";
+import type { Candle, FeedStatus, StrategyId, Timeframe } from "@/core/types";
 import { LIVE_MAX_AGE_SEC, backoffSeconds } from "@/core/dataQuality";
 
 export interface Snapshot {
@@ -38,7 +38,7 @@ export interface SetupRow {
   expires_at: string;
   updated_at: string;
   direction: "BUY" | "SELL";
-  strategy: "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal";
+  strategy: StrategyId;
   timeframe: Timeframe;
   confirm_tf: Timeframe;
   entry_type: "market" | "limit" | "stop";
