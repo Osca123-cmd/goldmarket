@@ -125,7 +125,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   minRrAfterCost: 1.5,
   minSlAtrConfirm: 0.8,
   minSlAtrContext: 0.75,
-  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12 },
+  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12, chop_breakout: 6 },
   dedupePips: 30,
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
@@ -133,7 +133,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   invalidationTolPips: 0,
   limitDepth: { fvg_retest: 1 },
   chopRanging: { bars: 4, maxAtr: 2 },
-  direction: { twoWay: ["crt", "fvg_retest", "order_block"], momentum: { tf: "M15", fast: 8, slow: 21 } },
+  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout"], momentum: { tf: "M15", fast: 8, slow: 21 } },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {
@@ -173,7 +173,7 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
 export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "breakout_retest", "liquidity_sweep", "msnr_flip"];
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
-export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block"];
+export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout"];
 /** Strategi dua arah penuh: boleh melawan bias utama (tidak ditolak gate struktur & tidak dibatalkan saat bias berlawanan). */
 // MSNR flip dikembalikan ke searah tren H1 saja (permintaan pengguna 20 Okt 2026 sore)
 // FVG retest sempat dibatasi (20 Okt sore), dibuka lagi dua arah penuh 20 Okt malam atas permintaan pengguna
@@ -188,4 +188,5 @@ export const STRATEGY_LABEL: Record<StrategyId, string> = {
   msnr_flip: "MSNR flip (Eksperimen)",
   fvg_retest: "FVG retest (Eksperimen)",
   order_block: "Order Block (Eksperimen)",
+  chop_breakout: "Breakout kandang babi (Eksperimen)",
 };

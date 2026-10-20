@@ -783,6 +783,58 @@ export function detectOrderBlock(direction: Direction, pair: TfPair, c: DetectCo
   );
 }
 
+/**
+ * Breakout kandang babi (20 Okt 2026): 4 candle H1 terakhir terkurung ≤ 2 ATR H1, lalu candle M15 terakhir menjadi
+ * close PERTAMA di luar kotak (> 0,1 ATR M15 melewati tepi) dengan badan ≥ 0,5 ATR M15. Entry limit retest di tepi
+ * kotak, SL/TP rencana M30; invalidasi bila harga masuk lagi 0,3 ATR M15 ke dalam kotak. Hanya pasangan konteks M30.
+ * Uji candle nyata 30 Agu–19 Okt (searah momentum, aturan peluang terlewat): 35 trade 23W/12L +2.205 (+63/sinyal).
+ */
+export function detectChopBreakout(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  if (pair.context !== "M30") return null;
+  const major = c.config.biasTfs.major;
+  const m = c.analysis.tfs[major];
+  const ctx = c.analysis.tfs[pair.context];
+  const conf = c.analysis.tfs[pair.confirm];
+  const bars = c.candles[pair.confirm] ?? [];
+  if (!m || !ctx || !conf || bars.length < 3) return null;
+  const box = isBoxed(c.candles[major] ?? [], m.atr, c.config.chopRanging ?? { bars: 4, maxAtr: 2 });
+  if (!box) return null;
+  const s = sgn(direction);
+  const a = conf.atr;
+  const edge = direction === "BUY" ? box.high : box.low;
+  const b = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+  if (!(s * (b.close - edge) > 0.1 * a) || s * (prev.close - edge) > 0) return null;
+  if (s * (b.close - b.open) < 0.5 * a) return null;
+  const zoneLow = direction === "BUY" ? edge - 0.2 * a : edge;
+  const zoneHigh = direction === "BUY" ? edge : edge + 0.2 * a;
+  const invalidation = edge - s * 0.3 * a;
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `Breakout kandang babi: ${c.config.chopRanging?.bars ?? 4} candle ${major} terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)}; candle ${pair.confirm} ${hhmm(b.time)} UTC close ${b.close.toFixed(2)} ${direction === "BUY" ? "menembus ke atas" : "menembus ke bawah"} dengan badan ${(s * (b.close - b.open) / a).toFixed(2)} ATR.`,
+    `Entry limit retest tepi kotak ${edge.toFixed(2)}; invalidasi bila harga masuk lagi ke ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "chop_breakout",
+      direction,
+      pair,
+      ctx,
+      conf,
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: 2,
+      anchor: `box:${box.low.toFixed(2)}-${box.high.toFixed(2)}`,
+      confirmCandles: bars,
+      confirmAfter: b.time + TF_SECONDS[pair.confirm],
+      reasons,
+    },
+    c,
+  );
+}
+
 /** candle terakhir terkurung dalam kotak ≤ maxAtr × ATR ("kandang babi") */
 export function isBoxed(bars: Candle[], atr: number, rule: { bars: number; maxAtr: number }): { high: number; low: number } | null {
   const b = bars.slice(-rule.bars);
@@ -816,6 +868,7 @@ const DETECTORS: [StrategyId, (direction: Direction, pair: TfPair, c: DetectCont
   ["msnr_flip", detectMsnrFlip],
   ["fvg_retest", detectFvgRetest],
   ["order_block", detectOrderBlock],
+  ["chop_breakout", detectChopBreakout],
 ];
 
 function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): SetupCandidate[] {
