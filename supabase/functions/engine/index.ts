@@ -984,6 +984,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     ...cfg,
     // daftar tetap: menambah/menghapus strategi di live tidak mengubah versi (hash) backtest
     strategies: RESEARCH_STRATEGIES,
+    // hanya strategi yang disimulasikan (urutan tetap), supaya strategi live baru tidak mengubah hash
+    expiryBars: Object.fromEntries(RESEARCH_STRATEGIES.map((st) => [st, cfg.expiryBars[st]])) as EngineConfig["expiryBars"],
     invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
     minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
     // aturan pengiriman live tidak disimulasikan; undefined → tidak masuk hash versi
