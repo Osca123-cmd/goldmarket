@@ -982,7 +982,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
   const BT_SOURCE = BT_SOURCE_LABEL[hist.id];
   const btCfg: EngineConfig = {
     ...cfg,
-    strategies: [...new Set([...cfg.strategies, ...RESEARCH_STRATEGIES])],
+    // daftar tetap: menambah/menghapus strategi di live tidak mengubah versi (hash) backtest
+    strategies: RESEARCH_STRATEGIES,
     invalidationTolPips: Math.max(cfg.invalidationTolPips, BT_INV_TOL_PIPS),
     minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
     // aturan pengiriman live tidak disimulasikan; undefined → tidak masuk hash versi

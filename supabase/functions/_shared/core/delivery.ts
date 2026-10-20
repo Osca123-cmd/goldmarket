@@ -111,3 +111,31 @@ export function deliveryBlock(
   }
   return null;
 }
+
+/**
+ * Reset tampilan harian (Signal History & lonceng) di awal jam istirahat 23.10 WIB. Hanya penyaring
+ * tampilan — data tidak dihapus. Disamakan dengan engine_state.config.delivery.quiet (start).
+ */
+export const DAILY_RESET = { hour: 23, minute: 10, utcOffsetHours: 7 };
+
+/** batas reset (23.10 WIB) terakhir yang ≤ sekarang, detik UTC */
+export function lastResetSec(nowSec: number, r = DAILY_RESET): number {
+  const off = r.utcOffsetHours * 3600;
+  const today = Math.floor((nowSec + off) / 86400) * 86400 - off + (r.hour * 60 + r.minute) * 60;
+  return today <= nowSec ? today : today - 86400;
+}
+
+export type PerfPeriod = "day" | "week" | "month" | "all";
+
+/** awal periode panel Overall Performance (detik UTC): hari trading berjalan, Senin & tanggal 1 di WIB */
+export function periodStart(p: PerfPeriod, nowSec: number, r = DAILY_RESET): number {
+  const off = r.utcOffsetHours * 3600;
+  if (p === "all") return 0;
+  if (p === "day") return lastResetSec(nowSec, r);
+  const d = new Date((nowSec + off) * 1000);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  if (p === "month") return Date.UTC(y, m, 1) / 1000 - off;
+  const sinceMonday = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(y, m, d.getUTCDate() - sinceMonday) / 1000 - off;
+}

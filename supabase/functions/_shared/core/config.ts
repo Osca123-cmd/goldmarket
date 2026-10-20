@@ -98,7 +98,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   minRrAfterCost: 1.5,
   minSlAtrConfirm: 0.8,
   minSlAtrContext: 0.75,
-  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8 },
+  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8 },
   dedupePips: 30,
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
@@ -137,11 +137,12 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
 }
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
-export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep"];
+export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt"];
 
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
   trend_pullback: "Trend pullback",
   liquidity_sweep: "Liquidity sweep (Eksperimen)",
   sd_reversal: "Supply/Demand reversal (Eksperimen)",
   breakout_retest: "Breakout retest",
+  crt: "CRT · Candle Range (Eksperimen)",
 };

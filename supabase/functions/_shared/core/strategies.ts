@@ -472,6 +472,78 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
   );
 }
 
+/**
+ * CRT (Candle Range Theory): candle konteks setelah candle H1 `range` tertutup menembus ujung range
+ * (≥ 0,1 ATR konteks) lalu MENUTUP kembali di dalamnya; candle sesudahnya tidak boleh menutup di luar lagi.
+ * BUY = sapuan di bawah low, SELL = sapuan di atas high. Mengembalikan candle sapuan atau null.
+ */
+export function findCrtSweep(direction: Direction, range: Candle, bars: Candle[], atr: number, rangeSec = 3600): Candle | null {
+  const s = sgn(direction);
+  const edge = direction === "BUY" ? range.low : range.high;
+  const after = bars.filter((b) => b.time >= range.time + rangeSec).slice(-3);
+  for (let k = after.length - 1; k >= 0; k--) {
+    const b = after[k];
+    const wick = direction === "BUY" ? b.low : b.high;
+    const swept = s * (edge - wick) >= 0.1 * atr;
+    const back = b.close <= range.high && b.close >= range.low;
+    if (!swept || !back) continue;
+    if (after.slice(k + 1).some((x) => s * (x.close - edge) < 0)) return null;
+    return b;
+  }
+  return null;
+}
+
+/** CRT: sapuan ujung range candle H1 sebelumnya lalu kembali ke dalam; target alami sisi lain range. */
+export function detectCrt(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const h1 = c.analysis.tfs.H1;
+  const confCandles = c.candles[pair.confirm] ?? [];
+  const hs = c.candles.H1 ?? [];
+  if (!ctx || !h1 || hs.length < 2 || confCandles.length < 3) return null;
+  const R = hs[hs.length - 1];
+  const size = R.high - R.low;
+  if (size < 0.5 * h1.atr || size > 3 * h1.atr) return null;
+  const a = ctx.atr;
+  const sweep = findCrtSweep(direction, R, c.candles[pair.context] ?? [], a);
+  if (!sweep) return null;
+  const s = sgn(direction);
+  const edge = direction === "BUY" ? R.low : R.high;
+  const zoneLow = direction === "BUY" ? edge - 0.1 * a : edge - 0.25 * a;
+  const zoneHigh = direction === "BUY" ? edge + 0.25 * a : edge + 0.1 * a;
+  const entryEdge = direction === "BUY" ? zoneHigh : zoneLow;
+  if (s * (c.price - entryEdge) > c.config.maxDistanceAtr * a) return null;
+  const target = direction === "BUY" ? R.high : R.low;
+  const tp1Dist = pipsToPrice(planFor(c.config, pair.context).tp1Pips, c.config.spec);
+  if (s * (target - entryEdge) < tp1Dist) return null; // tidak ada ruang sampai sisi lain range
+  const wick = direction === "BUY" ? sweep.low : sweep.high;
+  const invalidation = wick - s * 0.1 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `CRT: range H1 ${hhmm(R.time)} UTC ${R.low.toFixed(2)}–${R.high.toFixed(2)}; candle ${pair.context} ${hhmm(sweep.time)} menyapu ${direction === "BUY" ? "low" : "high"} (ujung ${wick.toFixed(2)}) lalu menutup kembali di dalam range.`,
+    `Area entry ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi di luar ujung sapuan ${invalidation.toFixed(2)}; target alami sisi lain range ${target.toFixed(2)} (TP tetap mengikuti rencana TF).`,
+  ];
+  return finalize(
+    {
+      strategy: "crt",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: 2,
+      anchor: `crt:${R.time}:${sweep.time}`,
+      confirmCandles: confCandles,
+      confirmAfter: sweep.time + TF_SECONDS[pair.context],
+      reasons,
+    },
+    c,
+  );
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -491,6 +563,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("sd_reversal")) {
         const r = detectSdReversal(dir, pair, c);
         if (r) out.push(r);
+      }
+      if (c.config.strategies.includes("crt")) {
+        const x = detectCrt(dir, pair, c);
+        if (x) out.push(x);
       }
     }
   }
