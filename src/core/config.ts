@@ -53,6 +53,13 @@ export interface EngineConfig {
    * (18 trade +45 → 11 trade +41), jadi OB tetap di tepi dekat.
    */
   limitDepth?: Partial<Record<StrategyId, number>>;
+  /**
+   * "Kandang babi": bila `bars` candle TF bias besar (H1) terakhir terkurung dalam ≤ `maxAtr` × ATR, H1 diperlakukan
+   * ranging khusus untuk Supply/Demand reversal; strategi lain tidak berubah. 20 Okt 2026 (uji candle nyata
+   * 30 Agu–19 Okt, 4 strategi live): 332 trade +4.494 (+13,5/sinyal) → 422 trade +6.534 (+15,5/sinyal),
+   * lebih baik di kedua paruh periode. Memblokir strategi ikut-tren di dalam kotak tidak membantu.
+   */
+  chopRanging?: { bars: number; maxAtr: number };
   /** aturan PENGIRIMAN sinyal live (bukan deteksi; tidak memengaruhi backtest). Tidak diisi = nonaktif. */
   delivery?: DeliveryRules;
 }
@@ -117,6 +124,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   newsBlackoutMin: 30,
   invalidationTolPips: 0,
   limitDepth: { fvg_retest: 1 },
+  chopRanging: { bars: 4, maxAtr: 2 },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {

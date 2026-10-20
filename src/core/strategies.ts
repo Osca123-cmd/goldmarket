@@ -783,8 +783,33 @@ export function detectOrderBlock(direction: Direction, pair: TfPair, c: DetectCo
   );
 }
 
+/** candle terakhir terkurung dalam kotak ≤ maxAtr × ATR ("kandang babi") */
+export function isBoxed(bars: Candle[], atr: number, rule: { bars: number; maxAtr: number }): { high: number; low: number } | null {
+  const b = bars.slice(-rule.bars);
+  if (b.length < rule.bars || !(atr > 0)) return null;
+  const high = Math.max(...b.map((x) => x.high));
+  const low = Math.min(...b.map((x) => x.low));
+  return high - low <= rule.maxAtr * atr ? { high, low } : null;
+}
+
+/** konteks S&D saat H1 berlabel tren tetapi harga terkurung: H1 (dan bias utama) diperlakukan ranging */
+export function chopRangingContext(c: DetectContext): DetectContext | null {
+  const rule = c.config.chopRanging;
+  const major = c.config.biasTfs.major;
+  const m = c.analysis.tfs[major];
+  if (!rule || !m || m.bias === "ranging") return null;
+  const box = isBoxed(c.candles[major] ?? [], m.atr, rule);
+  if (!box) return null;
+  const note = `${major} ${m.bias} tetapi ${rule.bars} candle terakhir terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)} (≤ ${rule.maxAtr} ATR, "kandang babi") → diperlakukan ranging untuk Supply/Demand reversal.`;
+  return {
+    ...c,
+    analysis: { ...c.analysis, mainBias: "ranging", tfs: { ...c.analysis.tfs, [major]: { ...m, bias: "ranging" } }, reasons: [...c.analysis.reasons, note] },
+  };
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
+  const sdCtx = c.config.strategies.includes("sd_reversal") ? (chopRangingContext(c) ?? c) : c;
   for (const pair of c.config.pairs) {
     for (const dir of ["BUY", "SELL"] as Direction[]) {
       if (c.config.strategies.includes("trend_pullback")) {
@@ -800,7 +825,7 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
         if (l) out.push(l);
       }
       if (c.config.strategies.includes("sd_reversal")) {
-        const r = detectSdReversal(dir, pair, c);
+        const r = detectSdReversal(dir, pair, sdCtx);
         if (r) out.push(r);
       }
       if (c.config.strategies.includes("crt")) {

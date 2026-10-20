@@ -997,6 +997,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     infoTf: undefined,
     // kedalaman entry limit khusus live (FVG/Order Block); undefined → simulasi & hash riset tidak berubah
     limitDepth: undefined,
+    // "kandang babi" → S&D memperlakukan H1 ranging, khusus live; undefined → hash riset tidak berubah
+    chopRanging: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);

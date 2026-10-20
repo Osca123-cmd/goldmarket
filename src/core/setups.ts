@@ -126,8 +126,9 @@ export function evaluateStatus(
   if (broke) {
     return { ...base, status: "invalid", reason: `Candle ${s.confirm_tf} ditutup ${broke.close.toFixed(2)} melewati invalidasi ${s.invalidation.toFixed(2)}.`, events: ["invalid"] };
   }
-  // strategi dua arah (MSNR flip, FVG retest) sengaja boleh melawan bias utama, jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
-  if (!TWO_WAY_STRATEGIES.includes(s.strategy) && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
+  // strategi dua arah (FVG retest) dan S&D reversal (pantulan dua arah di range / "kandang babi") sengaja boleh melawan
+  // bias utama, jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
+  if (!TWO_WAY_STRATEGIES.includes(s.strategy) && s.strategy !== "sd_reversal" && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
     return { ...base, status: "invalid", reason: `Bias utama berbalik ${args.mainBias}.`, events: ["invalid"] };
   }
 
