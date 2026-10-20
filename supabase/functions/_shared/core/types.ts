@@ -27,7 +27,7 @@ export interface Candle {
 }
 
 export type Direction = "BUY" | "SELL";
-export type StrategyId = "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal" | "crt";
+export type StrategyId = "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal" | "crt" | "msnr_flip";
 export type EntryType = "market" | "limit" | "stop";
 
 export type FeedStatus =

@@ -2,7 +2,7 @@ import type { Candle, Direction, EntryType, MarketBias, StrategyId, Timeframe } 
 import { TF_SECONDS } from "./types.ts";
 import { planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
-import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level } from "./structure.ts";
+import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level, type Swing } from "./structure.ts";
 import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevels } from "./instrument.ts";
 import { scoreSetup, type ScoreBreakdown } from "./scoring.ts";
 import { asiaRange, prevDayRange } from "./features.ts";
@@ -544,6 +544,80 @@ export function detectCrt(direction: Direction, pair: TfPair, c: DetectContext):
   );
 }
 
+/**
+ * MSNR flip: swing high (BUY) / swing low (SELL) TF konteks dalam 30 bar terakhir yang ditembus close
+ * ≥ 0,1 ATR (BOS) sehingga berganti peran, dan masih SEGAR: sejak break belum ada close kembali
+ * melewatinya dan belum ada candle yang menyentuh zona retest (L + 0,2 ATR untuk BUY).
+ */
+export function findMsnrFlip(direction: Direction, swings: Swing[], bars: Candle[], atr: number): { level: Swing; breakIndex: number } | null {
+  const s = sgn(direction);
+  const n = bars.length - 1;
+  const cands = swings.filter((sw) => sw.kind === (direction === "BUY" ? "high" : "low") && sw.index >= n - 30 && sw.index < n).sort((x, y) => y.index - x.index);
+  for (const sw of cands) {
+    const L = sw.price;
+    let k = -1;
+    for (let i = sw.index + 1; i <= n; i++) {
+      if (s * (bars[i].close - L) >= 0.1 * atr) {
+        k = i;
+        break;
+      }
+    }
+    if (k < 0) continue;
+    const after = bars.slice(k + 1);
+    const closedBack = after.some((b) => s * (b.close - L) < 0);
+    const retested = after.some((b) => s * ((direction === "BUY" ? b.low : b.high) - (L + s * 0.2 * atr)) <= 0);
+    if (closedBack || retested) continue;
+    return { level: sw, breakIndex: k };
+  }
+  return null;
+}
+
+/** MSNR flip: retest pertama level A/V yang berganti peran, hanya searah tren TF bias besar (H1). */
+export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const cs = c.candles[pair.context] ?? [];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  const major = c.config.biasTfs.major;
+  if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  if (c.analysis.tfs[major]?.bias !== dirBias(direction)) return null;
+  const a = ctx.atr;
+  const f = findMsnrFlip(direction, ctx.swings, cs, a);
+  if (!f) return null;
+  const s = sgn(direction);
+  const L = f.level.price;
+  const zoneLow = direction === "BUY" ? L - 0.15 * a : L - 0.2 * a;
+  const zoneHigh = direction === "BUY" ? L + 0.2 * a : L + 0.15 * a;
+  const edge = direction === "BUY" ? zoneHigh : zoneLow;
+  if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+  const invalidation = L - s * 0.5 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const brk = cs[f.breakIndex];
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `MSNR flip: ${major} ${dirBias(direction)}; ${direction === "BUY" ? "swing high (A)" : "swing low (V)"} ${pair.context} ${L.toFixed(2)} ditembus close ${brk.close.toFixed(2)} (${hhmm(brk.time)} UTC) → ${direction === "BUY" ? "resistance jadi support" : "support jadi resistance"}, belum pernah di-retest (level segar).`,
+    `Area retest ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "msnr_flip",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: 2,
+      anchor: `msnr:${f.level.time}`,
+      confirmCandles: confCandles,
+      confirmAfter: brk.time + TF_SECONDS[pair.context],
+      reasons,
+    },
+    c,
+  );
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -567,6 +641,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("crt")) {
         const x = detectCrt(dir, pair, c);
         if (x) out.push(x);
+      }
+      if (c.config.strategies.includes("msnr_flip")) {
+        const m = detectMsnrFlip(dir, pair, c);
+        if (m) out.push(m);
       }
     }
   }
