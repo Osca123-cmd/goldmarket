@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readyTitle, runEngineCycle, type EngineInput } from "../src/core/engine.ts";
+import { passedTp1AtCreation, readyTitle, runEngineCycle, type EngineInput } from "../src/core/engine.ts";
 import { DEFAULT_ENGINE_CONFIG, mergeConfig, planFor } from "../src/core/config.ts";
 import { demoPrice } from "../src/core/providers.ts";
 import { analyzeMarket } from "../src/core/analysis.ts";
@@ -276,5 +276,23 @@ describe("jam istirahat", () => {
     expect(recap?.title).toMatch(/^📊 REKAP 14 Jul — 1 entry · 0W\/0L/);
     expect(recap?.body).toMatch(/1 masih berjalan/);
     expect(out.analysis.reasons[0]).toMatch(/^Jam istirahat 23.10–05.00 WIB/);
+  });
+});
+
+describe("setup limit yang sudah terlewat saat dibuat", () => {
+  // SELL limit 4124.66, TP1 4119.66 (kasus 20 Okt 20.18 WIB: harga 4118.50)
+  const sell = { entryType: "limit" as const, direction: "SELL" as const, entry: 4124.66, tp1: 4119.66 };
+  it("harga sudah di bawah TP1 → ditolak dengan alasan peluang terlewat", () => {
+    expect(passedTp1AtCreation(sell, 4118.5)).toMatch(/Peluang terlewat sebelum dibuat/);
+    expect(passedTp1AtCreation(sell, 4119.66)).not.toBeNull();
+  });
+  it("harga di antara entry dan TP1 → tetap dibuat", () => {
+    expect(passedTp1AtCreation(sell, 4121)).toBeNull();
+    expect(passedTp1AtCreation({ ...sell, direction: "BUY", entry: 4110, tp1: 4115 }, 4113)).toBeNull();
+    expect(passedTp1AtCreation({ ...sell, direction: "BUY", entry: 4110, tp1: 4115 }, 4116)).not.toBeNull();
+  });
+  it("entry market/stop tidak terpengaruh", () => {
+    expect(passedTp1AtCreation({ ...sell, entryType: "market" }, 4118.5)).toBeNull();
+    expect(passedTp1AtCreation({ ...sell, entryType: "stop" }, 4118.5)).toBeNull();
   });
 });

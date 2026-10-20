@@ -86,6 +86,16 @@ const FEED_LABEL: Record<FeedStatus, string> = {
  * Satu siklus engine (tanpa I/O): validasi data → analisis → deteksi setup →
  * dedupe → evaluasi status setup lama → notifikasi.
  */
+/**
+ * Setup limit yang harganya sudah di/melewati TP1 saat dibuat ("peluang terlewat" sejak lahir, mis. SELL limit
+ * di atas harga dengan TP1 di atas harga juga) — tidak dikirim, agar tidak ada READY lalu BATAL semenit kemudian.
+ */
+export function passedTp1AtCreation(c: Pick<SetupCandidate, "entryType" | "direction" | "tp1" | "entry">, price: number): string | null {
+  if (c.entryType !== "limit") return null;
+  const past = c.direction === "BUY" ? price >= c.tp1 : price <= c.tp1;
+  return past ? `Peluang terlewat sebelum dibuat: harga ${price.toFixed(2)} sudah melewati TP1 ${c.tp1.toFixed(2)} dari entry ${c.entry.toFixed(2)}.` : null;
+}
+
 export function runEngineCycle(i: EngineInput): EngineOutput {
   const cfg = i.config;
   const tfs: Timeframe[] = analysisTfs(cfg);
@@ -125,6 +135,11 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     for (const c of cands) {
       if (blackoutReason) {
         rejected.push({ identityKey: c.identityKey, reason: blackoutReason });
+        continue;
+      }
+      const missed = passedTp1AtCreation(c, i.price);
+      if (missed) {
+        rejected.push({ identityKey: c.identityKey, reason: missed });
         continue;
       }
       const v = dedupeCandidate(c, pool, cfg);
