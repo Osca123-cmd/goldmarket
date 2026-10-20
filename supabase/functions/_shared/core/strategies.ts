@@ -140,8 +140,9 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
 
   const gates: Gate[] = [];
   gates.push({ key: "data", label: "Kualitas data", pass: true, note: "Lolos validasi data sebelum deteksi." });
-  // sd_reversal sengaja dua arah, tetapi hanya saat TF bias besar ranging (dicek di detektornya)
-  const counterOk = d.strategy === "sd_reversal" && c.analysis.tfs[c.config.biasTfs.major]?.bias === "ranging";
+  // sd_reversal sengaja dua arah, tetapi hanya saat TF bias besar ranging (dicek di detektornya);
+  // msnr_flip dua arah penuh (permintaan pengguna 20 Okt 2026): level yang ditembus + retest pertama sudah menandai pembalikan
+  const counterOk = (d.strategy === "sd_reversal" && c.analysis.tfs[c.config.biasTfs.major]?.bias === "ranging") || d.strategy === "msnr_flip";
   const biasOpposite = opposite(c.analysis.mainBias, d.direction) && !counterOk;
   const structOk = d.invalidation != null && !biasOpposite;
   gates.push({
@@ -153,7 +154,9 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
         ? "Tidak ada level invalidasi struktur yang jelas."
         : biasOpposite
           ? "Bias utama berlawanan."
-          : counterOk
+          : counterOk && opposite(c.analysis.mainBias, d.direction)
+            ? `Invalidasi struktur terdefinisi; MSNR flip melawan bias utama diizinkan (level segar yang ditembus menandai pembalikan).`
+            : counterOk && d.strategy === "sd_reversal"
             ? `Invalidasi struktur terdefinisi; ${c.config.biasTfs.major} ranging sehingga reversal dua arah diizinkan.`
             : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
   });
@@ -572,14 +575,15 @@ export function findMsnrFlip(direction: Direction, swings: Swing[], bars: Candle
   return null;
 }
 
-/** MSNR flip: retest pertama level A/V yang berganti peran, hanya searah tren TF bias besar (H1). */
+/** MSNR flip: retest pertama level A/V yang berganti peran, dua arah (searah maupun melawan tren TF bias besar H1). */
 export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   const ctx = c.analysis.tfs[pair.context];
   const cs = c.candles[pair.context] ?? [];
   const confCandles = c.candles[pair.confirm] ?? [];
   const major = c.config.biasTfs.major;
   if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
-  if (c.analysis.tfs[major]?.bias !== dirBias(direction)) return null;
+  const majorBias = c.analysis.tfs[major]?.bias;
+  const withTrend = majorBias === dirBias(direction);
   const a = ctx.atr;
   const f = findMsnrFlip(direction, ctx.swings, cs, a);
   if (!f) return null;
@@ -595,7 +599,7 @@ export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectCont
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const reasons = [
     ...c.analysis.reasons,
-    `MSNR flip: ${major} ${dirBias(direction)}; ${direction === "BUY" ? "swing high (A)" : "swing low (V)"} ${pair.context} ${L.toFixed(2)} ditembus close ${brk.close.toFixed(2)} (${hhmm(brk.time)} UTC) → ${direction === "BUY" ? "resistance jadi support" : "support jadi resistance"}, belum pernah di-retest (level segar).`,
+    `MSNR flip: ${withTrend ? `searah tren ${major} (${majorBias})` : `melawan tren ${major} (${majorBias ?? "—"}) — skor tren 0`}; ${direction === "BUY" ? "swing high (A)" : "swing low (V)"} ${pair.context} ${L.toFixed(2)} ditembus close ${brk.close.toFixed(2)} (${hhmm(brk.time)} UTC) → ${direction === "BUY" ? "resistance jadi support" : "support jadi resistance"}, belum pernah di-retest (level segar).`,
     `Area retest ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
   ];
   return finalize(
