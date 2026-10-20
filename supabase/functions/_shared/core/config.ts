@@ -1,4 +1,4 @@
-import type { EntryType, StrategyId, Timeframe } from "./types.ts";
+import type { EntryType, StopKind, StrategyId, Timeframe } from "./types.ts";
 import { DEFAULT_PIP_PLAN, DEFAULT_XAUUSD, type InstrumentSpec, type PipPlan } from "./instrument.ts";
 import { DEFAULT_THRESHOLDS, type QualityThresholds } from "./dataQuality.ts";
 
@@ -74,6 +74,8 @@ export interface DeliveryRules {
   oneAtATime?: boolean;
   /** jenis entry yang dikirim (sepanjang hari); tidak diisi = semua */
   entryTypes?: EntryType[];
+  /** jenis entry stop yang dikirim; tidak diisi = semua. 20 Okt: hanya back_to_zone (in_zone = sumber rugi stop live). */
+  stopKinds?: StopKind[];
   /** jam istirahat: tidak ada sinyal baru (boleh melewati tengah malam); rekap hari dikirim saat mulai */
   quiet?: QuietHours;
   windows?: DeliveryWindow[];

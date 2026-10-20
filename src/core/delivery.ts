@@ -1,5 +1,5 @@
 import type { EngineConfig, DeliveryWindow, QuietHours } from "./config.ts";
-import type { EntryType } from "./types.ts";
+import type { EntryType, StopKind } from "./types.ts";
 import type { StoredSetup } from "./setups.ts";
 
 /**
@@ -89,7 +89,7 @@ export function dailyRecap(setups: StoredSetup[], nowSec: number, q: QuietHours)
 }
 
 export function deliveryBlock(
-  c: { entryType: EntryType },
+  c: { entryType: EntryType; stopKind?: StopKind },
   known: StoredSetup[],
   cfg: Pick<EngineConfig, "delivery">,
   nowSec: number,
@@ -98,6 +98,8 @@ export function deliveryBlock(
   if (!rules) return null;
   if (rules.quiet && inQuiet(nowSec, rules.quiet)) return quietReason(rules.quiet);
   if (rules.entryTypes && !rules.entryTypes.includes(c.entryType)) return `Entry ${c.entryType} dinonaktifkan (hanya ${rules.entryTypes.join("/")}).`;
+  if (c.entryType === "stop" && rules.stopKinds && !rules.stopKinds.includes(c.stopKind ?? "in_zone"))
+    return "Entry stop di dalam area tanpa konfirmasi dinonaktifkan (hanya stop saat harga kembali ke area).";
   if (rules.oneAtATime) {
     const live = known.find(isQueueBlocking);
     if (live) return `Menunggu sinyal ${live.direction} ${live.timeframe} ${live.entry_price.toFixed(2)} selesai atau mencapai TP1 (1 sinyal sekaligus).`;

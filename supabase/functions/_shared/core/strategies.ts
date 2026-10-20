@@ -1,4 +1,4 @@
-import type { Candle, Direction, EntryType, MarketBias, StrategyId, Timeframe } from "./types.ts";
+import type { Candle, Direction, EntryType, MarketBias, StopKind, StrategyId, Timeframe } from "./types.ts";
 import { TF_SECONDS } from "./types.ts";
 import { TWO_WAY_STRATEGIES, planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
@@ -21,6 +21,8 @@ export interface SetupCandidate extends TradeLevels {
   timeframe: Timeframe;
   confirmTf: Timeframe;
   entryType: EntryType;
+  /** hanya untuk entry stop: kasus mana yang memicu */
+  stopKind?: StopKind;
   entryLow: number;
   entryHigh: number;
   invalidation: number;
@@ -108,6 +110,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
   const priceStrictInZone = c.price >= d.zoneLow && c.price <= d.zoneHigh;
 
   let entryType: EntryType;
+  let stopKind: StopKind | undefined;
   let entry: number;
   if (confirmed && priceInZone) {
     entryType = "market";
@@ -120,10 +123,12 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
   } else if (priceStrictInZone) {
     const last = d.confirmCandles[d.confirmCandles.length - 1];
     entryType = "stop";
+    stopKind = "in_zone";
     entry = d.direction === "BUY" ? last.high + 0.05 * atrConf : last.low - 0.05 * atrConf;
     reasons.push(`Harga di dalam area tanpa konfirmasi → stop di ${d.direction === "BUY" ? "atas high" : "bawah low"} candle ${d.pair.confirm} terakhir sebagai pemicu.`);
   } else {
     entryType = "stop";
+    stopKind = "back_to_zone";
     entry = d.direction === "BUY" ? d.zoneLow : d.zoneHigh;
     reasons.push("Harga di sisi berlawanan area → stop saat harga kembali ke area.");
   }
@@ -223,6 +228,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
     timeframe: d.pair.context,
     confirmTf: d.pair.confirm,
     entryType,
+    stopKind,
     entryLow: roundToTick(d.zoneLow, spec),
     entryHigh: roundToTick(d.zoneHigh, spec),
     invalidation: d.invalidation != null ? roundToTick(d.invalidation, spec) : NaN,

@@ -51,6 +51,12 @@ describe("aturan pengiriman sinyal", () => {
     expect(deliveryBlock({ entryType: "limit" }, [], only, WIB(15))).toBeNull();
     expect(deliveryBlock({ entryType: "market" }, [], only, WIB(15))).toBeNull();
   });
+  it("stop hanya kasus kembali ke area (V1): stop di dalam area tanpa konfirmasi ditahan", () => {
+    const v1 = { delivery: { entryTypes: ["limit", "market", "stop"], stopKinds: ["back_to_zone"] } as DeliveryRules };
+    expect(deliveryBlock({ entryType: "stop", stopKind: "back_to_zone" }, [], v1, WIB(10))).toBeNull();
+    expect(deliveryBlock({ entryType: "stop", stopKind: "in_zone" }, [], v1, WIB(10))).toMatch(/stop di dalam area/);
+    expect(deliveryBlock({ entryType: "limit" }, [], v1, WIB(10))).toBeNull();
+  });
   const quiet = { label: "23.10–05.00 WIB", startHour: 23, startMinute: 10, endHour: 5, endMinute: 0, utcOffsetHours: 7 };
   it("jam istirahat 23.10–05.00 WIB melewati tengah malam", () => {
     expect([WIB(23, 9), WIB(23, 10), WIB(2), WIB(4, 59), WIB(5)].map((t) => inQuiet(t, quiet))).toEqual([false, true, true, true, false]);
