@@ -46,6 +46,13 @@ export interface EngineConfig {
   newsBlackoutMin: number;
   /** SL tetap boleh berada maks. N pips di dalam invalidasi struktur (0 = ketat). Riset di backtest dulu sebelum dinaikkan untuk live. */
   invalidationTolPips: number;
+  /**
+   * Kedalaman entry limit di dalam zona per strategi: 0 = tepi dekat (default), 0,5 = tengah, 1 = tepi jauh.
+   * 20 Okt 2026 (uji candle nyata 30 Agu–19 Okt, aturan "peluang terlewat" dari TP1 entry baru): FVG tepi jauh
+   * 47 trade +12/sinyal → 27 trade +26/sinyal (net +549 → +699); Order Block tengah zona malah lebih jelek
+   * (18 trade +45 → 11 trade +41), jadi OB tetap di tepi dekat.
+   */
+  limitDepth?: Partial<Record<StrategyId, number>>;
   /** aturan PENGIRIMAN sinyal live (bukan deteksi; tidak memengaruhi backtest). Tidak diisi = nonaktif. */
   delivery?: DeliveryRules;
 }
@@ -109,6 +116,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   maxDistanceAtr: 1.5,
   newsBlackoutMin: 30,
   invalidationTolPips: 0,
+  limitDepth: { fvg_retest: 1 },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {

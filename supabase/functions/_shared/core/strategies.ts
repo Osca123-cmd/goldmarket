@@ -118,8 +118,15 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
     reasons.push(`Konfirmasi ${d.pair.confirm}: ${lastConf!.text}; harga masih di area → entry market.`);
   } else if (s * (c.price - (d.direction === "BUY" ? d.zoneHigh : d.zoneLow)) > 0) {
     entryType = "limit";
-    entry = d.direction === "BUY" ? d.zoneHigh : d.zoneLow;
-    reasons.push("Harga belum masuk area → limit di tepi area; tunggu konfirmasi candle tertutup.");
+    const near = d.direction === "BUY" ? d.zoneHigh : d.zoneLow;
+    const far = d.direction === "BUY" ? d.zoneLow : d.zoneHigh;
+    const depth = Math.min(1, Math.max(0, c.config.limitDepth?.[d.strategy] ?? 0));
+    entry = near + depth * (far - near);
+    reasons.push(
+      depth === 0
+        ? "Harga belum masuk area → limit di tepi area; tunggu konfirmasi candle tertutup."
+        : `Harga belum masuk area → limit ${depth >= 1 ? "di tepi jauh" : "di tengah"} area (entry lebih dalam, SL lebih jauh dari zona); tunggu konfirmasi candle tertutup.`,
+    );
   } else if (priceStrictInZone) {
     const last = d.confirmCandles[d.confirmCandles.length - 1];
     entryType = "stop";

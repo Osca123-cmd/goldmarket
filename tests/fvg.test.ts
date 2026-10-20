@@ -58,6 +58,8 @@ describe("FVG retest: celah harga segar yang ditinggalkan candle dorongan", () =
       for (const c of detectAll({ analysis, candles: closed, price: demoPrice(t / 60), spreadPips: 3, nowSec: t, dataTime: t, config: cfg })) {
         expect(c.strategy).toBe("fvg_retest");
         expect(c.slPips).toBe(cfg.planByTf[c.timeframe]!.slPips);
+        // entry limit FVG di tepi jauh celah (BUY: bawah, SELL: atas)
+        if (c.entryType === "limit") expect(c.entry).toBeCloseTo(c.direction === "BUY" ? c.entryLow : c.entryHigh, 1);
         const against = analysis.mainBias === (c.direction === "BUY" ? "bearish" : "bullish");
         // melawan H1 hanya bila bias utama tidak berlawanan (M30 tidak ikut searah H1)
         expect(against).toBe(false);

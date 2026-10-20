@@ -54,6 +54,8 @@ describe("Order Block: candle berlawanan terakhir sebelum dorongan yang menembus
         expect(c.strategy).toBe("order_block");
         expect(analysis.mainBias).not.toBe(c.direction === "BUY" ? "bearish" : "bullish");
         expect(c.slPips).toBe(cfg.planByTf[c.timeframe]!.slPips);
+        // entry limit Order Block tetap di tepi dekat zona (BUY: atas, SELL: bawah)
+        if (c.entryType === "limit") expect(c.entry).toBeCloseTo(c.direction === "BUY" ? c.entryHigh : c.entryLow, 1);
         found++;
       }
     }

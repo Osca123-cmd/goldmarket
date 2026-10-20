@@ -995,6 +995,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     delivery: undefined,
     // bonus skor H4 khusus live; undefined → simulasi & hash versi backtest tidak berubah
     infoTf: undefined,
+    // kedalaman entry limit khusus live (FVG/Order Block); undefined → simulasi & hash riset tidak berubah
+    limitDepth: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);
