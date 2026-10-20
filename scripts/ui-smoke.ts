@@ -73,7 +73,7 @@ for (let t = NOW - 3 * 86400; t <= NOW - 6 * 3600 && history.length < 8; t += 90
     history.push({ ...setups[0], id: `00000000-0000-4000-9000-${String(history.length + 1).padStart(12, "0")}`, direction: c.direction, strategy: c.strategy, timeframe: c.timeframe, entry_price: c.entry, sl: c.sl, tp1: c.tp1, tp2: c.tp2, tp3: c.tp3, score: c.score.total, status: "entry_touched", entry_touched_at: iso(touch.time), outcome: res.outcome, outcome_tp: res.tpHit, outcome_pips: res.pips, outcome_note: res.note, outcome_ambiguous: res.ambiguous });
   }
 }
-// sinyal berjalan (TP1 sudah tersentuh) agar badge "TP1 ✓" + floating + tangga TP ikut diuji
+// sinyal berjalan (TP1 sudah tersentuh) agar label "TP1 tersentuh" + floating + tangga TP ikut diuji
 if (setups[0]) {
   const p0 = demoPrice(NOW / 60);
   history.unshift({ ...setups[0], id: "00000000-0000-4000-9000-000000000099", direction: "SELL", timeframe: "M15", entry_price: p0 + 6, sl: p0 + 11, tp1: p0 + 1, tp2: p0 - 4, tp3: p0 - 9, status: "entry_touched", entry_touched_at: iso(NOW - 1800), outcome: "open", outcome_tp: 1, outcome_pips: null, outcome_note: "TP1 tersentuh, pelacakan berlanjut.", outcome_ambiguous: false });
@@ -227,19 +227,28 @@ for (const vp of viewports) {
     if (errors.length) problems.push(`${vp.name} ${p}: error JS ${errors.join(" | ")}`);
     const name = `${vp.name}-${p.replace(/\//g, "").replace("?bt", "-backtest") || "dashboard"}.png`;
     await page.screenshot({ path: join(OUT, name), fullPage: vp.name === "mobile" ? false : true });
-    if (p === "/opportunities/" && (await page.getByText("Overall Performance").count()) === 0) problems.push(`${vp.name} ${p}: panel Overall Performance tidak tampil`);
-    if (p === "/opportunities/") await page.getByLabel("Overall performance").screenshot({ path: join(OUT, `${vp.name}-overall-performance.png`) }).catch(() => {});
-    if (p === "/opportunities/" && (await page.getByText("DIKECUALIKAN").count()) === 0) problems.push(`${vp.name} ${p}: badge "DIKECUALIKAN" tidak tampil`);
+    if (p === "/opportunities/" && (await page.getByLabel("Kinerja sinyal").count()) === 0) problems.push(`${vp.name} ${p}: panel Kinerja tidak tampil`);
+    if (p === "/opportunities/") await page.getByLabel("Kinerja sinyal").screenshot({ path: join(OUT, `${vp.name}-overall-performance.png`) }).catch(() => {});
+    if (p === "/opportunities/" && (await page.getByText("Dikecualikan", { exact: true }).count()) === 0) problems.push(`${vp.name} ${p}: label "Dikecualikan" tidak tampil`);
     if (p === "/opportunities/") {
       // riwayat sinyal: baris berjalan bisa diketuk → tangga TP + floating
-      const row = page.getByRole("button", { name: /TP1 ✓/ }).first();
-      if ((await row.count()) === 0) problems.push(`${vp.name} ${p}: baris riwayat "TP1 ✓" tidak ditemukan`);
+      const row = page.getByRole("button", { name: /TP1 tersentuh/ }).first();
+      if ((await row.count()) === 0) problems.push(`${vp.name} ${p}: baris riwayat "TP1 tersentuh" tidak ditemukan`);
       else {
         await row.click();
         await page.waitForTimeout(300);
-        if ((await page.getByText("harga di sini").count()) === 0 && (await page.getByText("Floating").count()) === 0) problems.push(`${vp.name} ${p}: detail sinyal berjalan tidak tampil`);
-        await row.scrollIntoViewIfNeeded();
+        if ((await page.getByText(/SL ada di entry/).count()) === 0) problems.push(`${vp.name} ${p}: detail sinyal berjalan tidak tampil`);
+        await page.getByText(/SL ada di entry/).first().scrollIntoViewIfNeeded();
         await page.screenshot({ path: join(OUT, `${vp.name}-signal-history-open.png`) });
+      }
+      // mode pantau: tanpa sinyal aktif di atas → peta zona S/R
+      await page.getByText("Cari peluang lain").click();
+      await page.getByLabel("Status").selectOption("all");
+      await page.waitForTimeout(300);
+      if ((await page.getByText(/Engine mencari|Pasar datar|Jam istirahat|Pasar sedang tutup|data belum valid|belum mengirim/).count()) === 0) problems.push(`${vp.name} ${p}: kalimat status mode pantau tidak tampil`);
+      else {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: join(OUT, `${vp.name}-opportunities-watch.png`) });
       }
     }
     if (p === "/") {
