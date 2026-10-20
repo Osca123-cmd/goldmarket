@@ -709,6 +709,77 @@ export function detectFvgRetest(direction: Direction, pair: TfPair, c: DetectCon
   );
 }
 
+/**
+ * Order Block: BOS terbaru dalam 30 bar TF konteks — candle pertama yang close menembus swing lawan terakhir ≥ 0,1 ATR
+ * (BUY: swing high). OB = candle berlawanan arah terakhir (BUY: candle turun) maks 6 bar sebelum BOS; zona BUY =
+ * low OB … puncak badan OB (SELL cermin), tinggi 0,1–1,5 ATR. Masih SEGAR: sejak BOS belum ada candle yang masuk zona.
+ */
+export function findOrderBlock(direction: Direction, bars: Candle[], swings: Swing[], atr: number): { zoneLow: number; zoneHigh: number; obIndex: number; bosIndex: number; level: number } | null {
+  const s = sgn(direction);
+  const n = bars.length - 1;
+  const opp = swings.filter((x) => x.kind === (direction === "BUY" ? "high" : "low"));
+  for (let k = n; k >= Math.max(6, n - 30); k--) {
+    const sw = opp.filter((x) => x.index < k - 1).sort((x, y) => y.index - x.index)[0];
+    if (!sw || s * (bars[k].close - sw.price) < 0.1 * atr || s * (bars[k - 1].close - sw.price) >= 0) continue;
+    let j = k - 1;
+    while (j >= Math.max(1, k - 6) && !(direction === "BUY" ? bars[j].close < bars[j].open : bars[j].close > bars[j].open)) j--;
+    if (j < Math.max(1, k - 6)) continue; // tidak ada candle berlawanan sebelum dorongan → cari BOS sebelumnya
+    const ob = bars[j];
+    const zoneLow = direction === "BUY" ? ob.low : Math.min(ob.open, ob.close);
+    const zoneHigh = direction === "BUY" ? Math.max(ob.open, ob.close) : ob.high;
+    const h = zoneHigh - zoneLow;
+    if (h < 0.1 * atr || h > 1.5 * atr) return null;
+    if (bars.slice(k + 1).some((c) => (direction === "BUY" ? c.low <= zoneHigh : c.high >= zoneLow))) return null;
+    return { zoneLow, zoneHigh, obIndex: j, bosIndex: k, level: sw.price };
+  }
+  return null;
+}
+
+/** Order Block retest (versi O2 pilihan pengguna 20 Okt 2026): BUY/SELL selama bias utama tidak berlawanan; entry limit di tepi zona. */
+export function detectOrderBlock(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const cs = c.candles[pair.context] ?? [];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  const major = c.config.biasTfs.major;
+  if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  if (opposite(c.analysis.mainBias, direction)) return null;
+  const a = ctx.atr;
+  const f = findOrderBlock(direction, cs, ctx.swings, a);
+  if (!f) return null;
+  const s = sgn(direction);
+  const edge = direction === "BUY" ? f.zoneHigh : f.zoneLow;
+  // harga harus masih di luar zona (menunggu retest pertama) dan tidak terlalu jauh
+  if (s * (c.price - edge) <= 0 || s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+  const invalidation = direction === "BUY" ? f.zoneLow - 0.1 * a : f.zoneHigh + 0.1 * a;
+  const ob = cs[f.obIndex];
+  const bos = cs[f.bosIndex];
+  const majorBias = c.analysis.tfs[major]?.bias;
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `Order Block: ${majorBias === dirBias(direction) ? `searah tren ${major}` : `${major} ${majorBias ?? "—"}, bias utama tidak berlawanan`}; close ${pair.context} ${hhmm(bos.time)} UTC menembus swing ${f.level.toFixed(2)} (BOS); candle ${direction === "BUY" ? "turun" : "naik"} terakhir sebelum dorongan (${hhmm(ob.time)} UTC) = zona ${f.zoneLow.toFixed(2)}–${f.zoneHigh.toFixed(2)}, belum pernah di-retest.`,
+    `Entry limit di tepi zona; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "order_block",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow: f.zoneLow,
+      zoneHigh: f.zoneHigh,
+      invalidation,
+      levelTouches: 2,
+      anchor: `ob:${ob.time}`,
+      confirmCandles: confCandles,
+      confirmAfter: bos.time + TF_SECONDS[pair.context],
+      reasons,
+    },
+    c,
+  );
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -740,6 +811,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("fvg_retest")) {
         const g = detectFvgRetest(dir, pair, c);
         if (g) out.push(g);
+      }
+      if (c.config.strategies.includes("order_block")) {
+        const o = detectOrderBlock(dir, pair, c);
+        if (o) out.push(o);
       }
     }
   }
