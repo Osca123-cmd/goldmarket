@@ -151,7 +151,8 @@ export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "breakout_ret
 export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest"];
 /** Strategi dua arah penuh: boleh melawan bias utama (tidak ditolak gate struktur & tidak dibatalkan saat bias berlawanan). */
 // MSNR flip dikembalikan ke searah tren H1 saja (permintaan pengguna 20 Okt 2026 sore)
-export const TWO_WAY_STRATEGIES: StrategyId[] = ["fvg_retest"];
+// FVG retest juga tidak lagi dua arah penuh (20 Okt sore): melawan H1 hanya bila M30 tidak ikut searah H1 (bias utama tidak berlawanan)
+export const TWO_WAY_STRATEGIES: StrategyId[] = [];
 
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
   trend_pullback: "Trend pullback",

@@ -47,7 +47,7 @@ describe("FVG retest: celah harga segar yang ditinggalkan candle dorongan", () =
     bars[29] = bar(29, 4095, 4097, 4093, 4094);
     expect(findFvg("SELL", bars, atr)).toEqual({ low: 4098, high: 4100, index: 27 });
   });
-  it("detectAll (fvg_retest) di data demo: dua arah, SL/TP rencana TF, melawan H1 tetap lolos gate struktur", () => {
+  it("detectAll (fvg_retest) di data demo: SL/TP rencana TF, tidak pernah melawan bias utama", () => {
     const cfg = mergeConfig({ strategies: ["fvg_retest"] });
     let found = 0;
     for (let t = Date.parse("2026-07-01T00:00:00Z") / 1000; t < Date.parse("2026-07-15T00:00:00Z") / 1000; t += 1800) {
@@ -59,10 +59,8 @@ describe("FVG retest: celah harga segar yang ditinggalkan candle dorongan", () =
         expect(c.strategy).toBe("fvg_retest");
         expect(c.slPips).toBe(cfg.planByTf[c.timeframe]!.slPips);
         const against = analysis.mainBias === (c.direction === "BUY" ? "bearish" : "bullish");
-        if (against) {
-          expect(c.gates.find((g) => g.key === "structure")?.pass).toBe(true);
-          expect(c.score.components.find((x) => x.key === "trend")?.points).toBe(0);
-        }
+        // melawan H1 hanya bila bias utama tidak berlawanan (M30 tidak ikut searah H1)
+        expect(against).toBe(false);
         found++;
       }
     }

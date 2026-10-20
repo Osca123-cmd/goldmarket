@@ -160,7 +160,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
         : biasOpposite
           ? "Bias utama berlawanan."
           : counterOk && opposite(c.analysis.mainBias, d.direction)
-            ? `Invalidasi struktur terdefinisi; FVG retest melawan bias utama diizinkan (strategi dua arah).`
+            ? `Invalidasi struktur terdefinisi; strategi dua arah, melawan bias utama diizinkan.`
             : counterOk && d.strategy === "sd_reversal"
             ? `Invalidasi struktur terdefinisi; ${c.config.biasTfs.major} ranging sehingga reversal dua arah diizinkan.`
             : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
@@ -656,13 +656,17 @@ export function findFvg(direction: Direction, bars: Candle[], atr: number): { lo
   return null;
 }
 
-/** FVG retest: retest pertama celah harga yang ditinggalkan candle dorongan; dua arah (searah maupun melawan tren H1). */
+/**
+ * FVG retest: retest pertama celah harga yang ditinggalkan candle dorongan. Melawan tren H1 hanya bila bias utama
+ * tidak berlawanan — mis. BUY saat H1 turun hanya ketika M30 sudah datar/naik (penurunan melambat), bukan saat H1 & M30 turun.
+ */
 export function detectFvgRetest(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   const ctx = c.analysis.tfs[pair.context];
   const cs = c.candles[pair.context] ?? [];
   const confCandles = c.candles[pair.confirm] ?? [];
   const major = c.config.biasTfs.major;
   if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  if (opposite(c.analysis.mainBias, direction)) return null;
   const a = ctx.atr;
   const f = findFvg(direction, cs, a);
   if (!f) return null;
@@ -682,7 +686,7 @@ export function detectFvgRetest(direction: Direction, pair: TfPair, c: DetectCon
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const reasons = [
     ...c.analysis.reasons,
-    `FVG retest: ${withTrend ? `searah tren ${major} (${majorBias})` : `melawan tren ${major} (${majorBias ?? "—"}) — skor tren 0`}; candle dorongan ${direction === "BUY" ? "naik" : "turun"} ${pair.context} (${hhmm(impulse.time)} UTC) meninggalkan celah ${f.low.toFixed(2)}–${f.high.toFixed(2)} yang belum pernah diisi${bos ? `, sekaligus menembus swing ${lastSwing!.price.toFixed(2)} (BOS)` : ""}.`,
+    `FVG retest: ${withTrend ? `searah tren ${major} (${majorBias})` : majorBias === "ranging" ? `${major} ranging` : `melawan tren ${major} (${majorBias ?? "—"}), ${c.config.biasTfs.minor} tidak ikut searah ${major}`}; candle dorongan ${direction === "BUY" ? "naik" : "turun"} ${pair.context} (${hhmm(impulse.time)} UTC) meninggalkan celah ${f.low.toFixed(2)}–${f.high.toFixed(2)} yang belum pernah diisi${bos ? `, sekaligus menembus swing ${lastSwing!.price.toFixed(2)} (BOS)` : ""}.`,
     `Area retest = celah; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
   ];
   return finalize(
