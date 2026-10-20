@@ -6,7 +6,7 @@ import { floatingPips, isActiveSignal, isRunningSignal, type SetupRow } from "@/
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
 import { STRATEGY_LABEL } from "@/core/config";
 import { ago, cx, fmt, fmtTime } from "./ui";
-import { PriceLadder, signalMarks } from "./PriceLadder";
+import { SignalBar } from "./LevelBar";
 import { ProbabilityBox } from "./ProbabilityBox";
 
 const STATUS_TEXT: Record<SetupRow["status"], string> = {
@@ -19,8 +19,8 @@ const STATUS_TEXT: Record<SetupRow["status"], string> = {
 
 const ORDER: Record<SetupRow["entry_type"], string> = { market: "Order market", limit: "Order limit", stop: "Order stop" };
 
-/** Tiket sinyal: arah, timeframe & strategi, lalu peta harga SL · Entry · TP dengan posisi harga sekarang. */
-export function SetupCard({ s, price, tz, now, pipSize = 0.1 }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number }) {
+/** Tiket sinyal: arah, timeframe & strategi, lalu bar progres SL → Entry → TP3 dengan posisi harga sekarang. */
+export function SetupCard({ s, price, tz, now, pipSize = 0.1, bare }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number; /** tanpa bingkai, untuk ditaruh langsung di panel */ bare?: boolean }) {
   const [open, setOpen] = useState(false);
   const pip = s.pip_size || pipSize;
   const dist = price != null ? Math.abs(price - s.entry_price) / pip : s.distance_pips;
@@ -29,7 +29,7 @@ export function SetupCard({ s, price, tz, now, pipSize = 0.1 }: { s: SetupRow; p
   const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
   const link = "rounded text-sm font-medium text-gold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
   return (
-    <article className={cx("rounded-2xl border border-line bg-surface-2/30 p-4 sm:p-5 fade-in", !active && !running && "opacity-75")}>
+    <article className={cx("fade-in", bare ? "px-4 py-5 sm:px-6" : "rounded-2xl border border-line bg-surface-2/30 p-4 sm:p-5", !active && !running && "opacity-75")}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className={cx("text-xl font-bold", s.direction === "BUY" ? "text-buy" : "text-sell")}>{s.direction}</span>
         <span className="text-xl font-semibold text-ink">{s.timeframe}</span>
@@ -41,19 +41,13 @@ export function SetupCard({ s, price, tz, now, pipSize = 0.1 }: { s: SetupRow; p
       </p>
       {!s.eligible && <p className="mt-1 text-xs text-warn">Belum layak dikirim sebagai sinyal: {s.status_reason ?? "syarat wajib belum terpenuhi"}</p>}
 
-      <div className="mt-4">
-        <PriceLadder
-          marks={signalMarks(s)}
-          price={price}
-          anchor={running ? s.entry_price : undefined}
-          direction={s.direction}
-          spread={110}
-          priceNote={float != null ? `${float > 0 ? "+" : ""}${fmt(float, 0)} pips` : dist != null ? `${fmt(dist, 0)} pips ke entry` : undefined}
-        />
+      <div className="mt-2">
+        <SignalBar s={s} price={price} priceText={float != null ? `${float > 0 ? "+" : ""}${fmt(float, 0)} pips` : undefined} />
       </div>
 
       <p className="mt-3 text-xs text-muted">
         {s.eligible && s.status_reason ? `${s.status_reason} ` : ""}
+        {!running && dist != null ? `Harga ${fmt(dist, 0)} pips dari entry. ` : ""}
         {active ? `Berlaku sampai ${fmtTime(s.expires_at, tz, true)}, dibuat ${ago(s.created_at, now)}.` : ""}
       </p>
 

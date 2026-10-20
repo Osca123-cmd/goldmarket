@@ -60,7 +60,7 @@ export function PushToggle({ variant = "card" }: { variant?: "card" | "banner" |
             <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />
           </svg>
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[12rem] flex-1">
           <div className="text-sm font-semibold">{state === "on" ? "Notifikasi HP aktif" : "Notifikasi HP & desktop"}</div>
           <p className="text-xs text-muted">{TEXT[state]}</p>
         </div>

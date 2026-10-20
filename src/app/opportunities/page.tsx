@@ -10,7 +10,7 @@ import { OverallPerformance } from "@/components/OverallPerformance";
 import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHistory";
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, ago, cx, fmt, useNow } from "@/components/ui";
-import { PriceLadder, type LadderMark } from "@/components/PriceLadder";
+import { ZoneBar } from "@/components/LevelBar";
 import { useAuth } from "@/lib/auth";
 import { effectiveStatus, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
@@ -53,9 +53,9 @@ interface Zone {
   kind: "support" | "resistance";
 }
 
-/** Zona S/R terdekat di atas dan di bawah harga. Sisi yang searah bias (BUY → support, SELL → resistance) mendapat dua zona. */
-function zones(analysis: AnalysisRow | null, price: number | null, pipSize: number): { dir: "BUY" | "SELL" | null; list: (Zone & { wanted: boolean })[] } {
-  if (!analysis || price == null) return { dir: null, list: [] };
+/** Zona S/R di atas (resistance) dan di bawah (support) harga, masing-masing urut dari yang terdekat. */
+function zones(analysis: AnalysisRow | null, price: number | null, pipSize: number): { dir: "BUY" | "SELL" | null; support: Zone[]; resistance: Zone[] } {
+  if (!analysis || price == null) return { dir: null, support: [], resistance: [] };
   const atr = analysis.timeframes.M15?.atr ?? 2;
   const pad = Math.max(atr * 0.15, pipSize * 5);
   const all: Zone[] = analysis.levels
@@ -78,22 +78,16 @@ function zones(analysis: AnalysisRow | null, price: number | null, pipSize: numb
   const merged: Zone[] = [];
   for (const z of all) if (!merged.some((m) => z.low <= m.high && z.high >= m.low)) merged.push(z);
   const dir = analysis.main_bias === "bullish" ? "BUY" : analysis.main_bias === "bearish" ? "SELL" : null;
-  const pick = (kind: Zone["kind"]) => {
-    const wanted = dir == null || (dir === "BUY" ? kind === "support" : kind === "resistance");
-    return merged.filter((z) => z.kind === kind).slice(0, wanted ? 2 : 1).map((z) => ({ ...z, wanted }));
-  };
-  return { dir, list: [...pick("resistance"), ...pick("support")] };
+  return { dir, support: merged.filter((z) => z.kind === "support"), resistance: merged.filter((z) => z.kind === "resistance") };
 }
 
-function zoneMarks(list: (Zone & { wanted: boolean })[]): LadderMark[] {
-  return list.map((z) => ({
-    price: z.mid,
-    label: `${z.kind === "resistance" ? "Resistance" : "Support"} ${z.tf}`,
-    detail: `${z.touches} sentuhan`,
-    note: z.dist === 0 ? "harga di dalam zona" : `${fmt(z.dist, 0)} pips`,
-    tone: z.wanted ? (z.kind === "resistance" ? "sell" : "buy") : "muted",
-    band: [z.low, z.high],
-  }));
+/** Kalimat zona berikutnya di sisi yang searah bias (keduanya bila netral). */
+function nextZones(w: ReturnType<typeof zones>): string | null {
+  const parts = [
+    ...(w.dir !== "BUY" && w.resistance[1] ? [`resistance ${w.resistance[1].tf} ${fmt(w.resistance[1].mid)} (${fmt(w.resistance[1].dist, 0)} pips)`] : []),
+    ...(w.dir !== "SELL" && w.support[1] ? [`support ${w.support[1].tf} ${fmt(w.support[1].mid)} (${fmt(w.support[1].dist, 0)} pips)`] : []),
+  ];
+  return parts.length ? `Zona berikutnya: ${parts.join(" dan ")}.` : null;
 }
 
 function LiveSignal() {
@@ -166,7 +160,7 @@ function LiveSignal() {
             : showSignals
               ? [
                   list.length === 1 ? `Sinyal ${one.direction} ${one.timeframe} ${isRunningSignal(one) ? "sedang berjalan" : "siap, menunggu entry"}.` : `${list.length} sinyal aktif.`,
-                  "Level lengkap ada di peta harga di bawah. Website ini tidak membuka posisi di broker.",
+                  "Level lengkap ada di bawah. Website ini tidak membuka posisi di broker.",
                 ]
               : [
                   watch.dir === "BUY" ? "Engine mencari BUY di support terdekat." : watch.dir === "SELL" ? "Engine mencari SELL di resistance terdekat." : "Pasar datar, engine menunggu harga mendekati zona.",
@@ -217,15 +211,17 @@ function LiveSignal() {
         </div>
 
         {showSignals ? (
-          <div className="space-y-3 p-3 pt-4 sm:p-5">
+          <div className="mt-4 divide-y divide-line border-t border-line">
             {list.map((s) => (
-              <SetupCard key={s.id} s={s} price={price} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />
+              <SetupCard key={s.id} bare s={s} price={price} tz={tz} now={now} minScore={settings?.min_score?.[s.timeframe]} pipSize={settings?.pip_size} />
             ))}
           </div>
         ) : (
           <div className="px-4 pb-4 pt-5 sm:px-6">
-            <PriceLadder marks={zoneMarks(watch.list)} price={price} empty="Belum ada level dengan dua sentuhan atau lebih di dekat harga." />
-            <p className="mt-3 text-xs text-muted">Zona dari level support dan resistance M15 dan H1 yang tersentuh minimal dua kali. Ini area pantauan, bukan sinyal entry.</p>
+            {price != null && <ZoneBar support={watch.support[0] ?? null} resistance={watch.resistance[0] ?? null} price={price} pipSize={pipSize} />}
+            <p className="mt-4 text-xs text-muted">
+              {nextZones(watch) ? `${nextZones(watch)} ` : ""}Zona dari level support dan resistance M15 dan H1 yang tersentuh minimal dua kali. Ini area pantauan, bukan sinyal entry.
+            </p>
           </div>
         )}
 
@@ -297,13 +293,13 @@ function LiveSignal() {
         }
       >
         {hist.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted">Belum ada sinyal hari ini. Riwayat direset otomatis pukul 23.10 WIB; riwayat lengkap ada di Jurnal → Sinyal dan panel Kinerja.</p>
+          <p className="px-2 py-6 text-center text-sm text-muted">Belum ada sinyal hari ini. Riwayat direset otomatis pukul 23.10 WIB; riwayat lengkap ada di Jurnal → Sinyal dan panel Kinerja.</p>
         ) : (
           hist.map((h) => (
             <SignalHistoryItem key={h.id} s={h} tz={tz} price={snapshot?.price ?? null} grade={gradeOf(h.score)} time={`${STRATEGY_LABEL[h.strategy]}, entry ${hhmm(h.entry_touched_at, tz)} (${relTime(h.entry_touched_at, now)})`} />
           ))
         )}
-        <p className="px-5 py-3 text-[11px] text-muted">
+        <p className="px-1 pt-2 text-[11px] text-muted">
           Setelah TP1, SL dipindah ke entry (BE). WIN = TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry / TP3 / 24 jam; LOSS = SL sebelum TP1; SL &amp; TP dalam candle yang sama dihitung SL. Hasil level sinyal menurut feed ({snapshot?.source_label ?? "—"}), belum termasuk spread/komisi, dan bukan transaksi Anda. Tidak menjamin hasil mendatang.
         </p>
       </HistoryPanel>
