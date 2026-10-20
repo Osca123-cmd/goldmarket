@@ -40,8 +40,12 @@ describe("lifecycle peluang", () => {
     expect(u.status).toBe("invalid");
   });
 
-  it("MSNR flip melawan bias utama tidak dibatalkan bias; tetap bisa kena entry, invalidasi struktur tetap berlaku", () => {
-    const m: StoredSetup = { ...base, strategy: "msnr_flip" };
+  it("MSNR flip kembali searah tren: dibatalkan saat bias utama berbalik", () => {
+    expect(evaluateStatus({ ...base, strategy: "msnr_flip" }, { nowSec: 1_000_700, price: 3004, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("invalid");
+  });
+
+  it("FVG retest (dua arah) melawan bias utama tidak dibatalkan bias; tetap bisa kena entry, invalidasi struktur tetap berlaku", () => {
+    const m: StoredSetup = { ...base, strategy: "fvg_retest" };
     expect(evaluateStatus(m, { nowSec: 1_000_700, price: 3004, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("approaching");
     expect(evaluateStatus(m, { nowSec: 1_000_700, price: 2999.9, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("entry_touched");
     const broke = [c(1_000_500, 3002, 3002, 2994, 2995)];

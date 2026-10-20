@@ -47,7 +47,7 @@ describe("MSNR flip: level A/V yang berganti peran, retest pertama", () => {
     for (let i = 35; i < 40; i++) bars[i] = bar(i, 4094, 4098, 4095);
     expect(findMsnrFlip("SELL", [swingLow], bars, atr)).toEqual({ level: swingLow, breakIndex: 34 });
   });
-  it("detectAll (msnr_flip) di data demo: dua arah, melawan H1 diberi skor tren 0 & catatan, SL/TP rencana TF", () => {
+  it("detectAll (msnr_flip) di data demo: hanya searah bias H1, SL/TP rencana TF", () => {
     const cfg = mergeConfig({ strategies: ["msnr_flip"] });
     let found = 0;
     for (let t = Date.parse("2026-07-14T06:00:00Z") / 1000; t < Date.parse("2026-07-16T06:00:00Z") / 1000; t += 1800) {
@@ -57,12 +57,8 @@ describe("MSNR flip: level A/V yang berganti peran, retest pertama", () => {
       const analysis = analyzeMarket({ nowSec: t, candles: closed }, analysisTfs(cfg), cfg.biasTfs);
       for (const c of detectAll({ analysis, candles: closed, price: demoPrice(t / 60), spreadPips: 3, nowSec: t, dataTime: t, config: cfg })) {
         expect(c.strategy).toBe("msnr_flip");
-        const withTrend = analysis.tfs.H1?.bias === (c.direction === "BUY" ? "bullish" : "bearish");
-        expect(c.reasons.some((r) => r.includes(withTrend ? "searah tren H1" : "melawan tren H1"))).toBe(true);
-        if (analysis.mainBias !== "ranging" && analysis.mainBias !== (c.direction === "BUY" ? "bullish" : "bearish")) {
-          expect(c.score.components.find((x) => x.key === "trend")?.points).toBe(0);
-          expect(c.gates.find((g) => g.key === "structure")?.pass).toBe(c.invalidation != null);
-        }
+        expect(analysis.tfs.H1?.bias).toBe(c.direction === "BUY" ? "bullish" : "bearish");
+        expect(c.reasons.some((r) => r.includes("searah tren H1"))).toBe(true);
         expect(c.slPips).toBe(cfg.planByTf[c.timeframe]!.slPips);
         found++;
       }

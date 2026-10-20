@@ -160,7 +160,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
         : biasOpposite
           ? "Bias utama berlawanan."
           : counterOk && opposite(c.analysis.mainBias, d.direction)
-            ? `Invalidasi struktur terdefinisi; ${d.strategy === "fvg_retest" ? "FVG retest" : "MSNR flip"} melawan bias utama diizinkan (strategi dua arah).`
+            ? `Invalidasi struktur terdefinisi; FVG retest melawan bias utama diizinkan (strategi dua arah).`
             : counterOk && d.strategy === "sd_reversal"
             ? `Invalidasi struktur terdefinisi; ${c.config.biasTfs.major} ranging sehingga reversal dua arah diizinkan.`
             : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
@@ -583,7 +583,7 @@ export function findMsnrFlip(direction: Direction, swings: Swing[], bars: Candle
   return null;
 }
 
-/** MSNR flip: retest pertama level A/V yang berganti peran, dua arah (searah maupun melawan tren TF bias besar H1). */
+/** MSNR flip: retest pertama level A/V yang berganti peran, hanya searah tren TF bias besar (H1). */
 export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   const ctx = c.analysis.tfs[pair.context];
   const cs = c.candles[pair.context] ?? [];
@@ -591,7 +591,8 @@ export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectCont
   const major = c.config.biasTfs.major;
   if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
   const majorBias = c.analysis.tfs[major]?.bias;
-  const withTrend = majorBias === dirBias(direction);
+  // searah tren H1 saja (dua arah dicoba 20 Okt pagi, dikembalikan atas permintaan pengguna)
+  if (majorBias !== dirBias(direction)) return null;
   const a = ctx.atr;
   const f = findMsnrFlip(direction, ctx.swings, cs, a);
   if (!f) return null;
@@ -607,7 +608,7 @@ export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectCont
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const reasons = [
     ...c.analysis.reasons,
-    `MSNR flip: ${withTrend ? `searah tren ${major} (${majorBias})` : `melawan tren ${major} (${majorBias ?? "—"}) — skor tren 0`}; ${direction === "BUY" ? "swing high (A)" : "swing low (V)"} ${pair.context} ${L.toFixed(2)} ditembus close ${brk.close.toFixed(2)} (${hhmm(brk.time)} UTC) → ${direction === "BUY" ? "resistance jadi support" : "support jadi resistance"}, belum pernah di-retest (level segar).`,
+    `MSNR flip: searah tren ${major} (${majorBias}); ${direction === "BUY" ? "swing high (A)" : "swing low (V)"} ${pair.context} ${L.toFixed(2)} ditembus close ${brk.close.toFixed(2)} (${hhmm(brk.time)} UTC) → ${direction === "BUY" ? "resistance jadi support" : "support jadi resistance"}, belum pernah di-retest (level segar).`,
     `Area retest ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)}; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
   ];
   return finalize(
