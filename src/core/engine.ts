@@ -152,6 +152,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
         entry_high: c.entryHigh,
         invalidation: c.invalidation,
         sl: c.sl,
+        tp1: c.tp1,
         created_at_sec: c.createdAt,
         expires_at_sec: c.expiresAt,
         status: "approaching",

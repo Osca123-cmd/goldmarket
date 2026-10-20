@@ -19,6 +19,8 @@ export interface StoredSetup {
   entry_high: number;
   invalidation: number;
   sl: number;
+  /** TP1 — untuk aturan "peluang terlewat" (harga sampai TP1 sebelum entry tersentuh) */
+  tp1?: number;
   created_at_sec: number;
   expires_at_sec: number;
   status: OpportunityStatus;
@@ -139,6 +141,21 @@ export function evaluateStatus(
     };
     // candle M5 pertama yang menyentuh → waktu sentuhan (candle M15 Twelve Data baru masuk saat bar tutup)
     const fine = (args.touchCandles ?? []).find((c) => c.time > s.created_at_sec && hit(c.high, c.low));
+
+    // peluang terlewat: harga sudah mencapai TP1 sebelum entry tersentuh → batal (permintaan pengguna 20 Okt 2026).
+    // Urutan dibaca dari M5 bila ada (lebih halus); entry & TP1 di candle yang sama dihitung entry tersentuh.
+    const tp1 = s.tp1;
+    if (s.entry_type !== "market" && tp1 != null && Number.isFinite(tp1)) {
+      const tpHit = (hi: number, lo: number) => (s.direction === "BUY" ? hi >= tp1 : lo <= tp1);
+      const bars = (args.touchCandles?.length ? args.touchCandles : after).filter((c) => c.time > s.created_at_sec);
+      const first = (f: (hi: number, lo: number) => boolean) => bars.find((c) => f(c.high, c.low))?.time ?? Infinity;
+      const tEntry = first(hit);
+      const tTp = first(tpHit);
+      const tickPast = tEntry === Infinity && args.price != null && tpHit(args.price, args.price) && !hit(args.price, args.price);
+      if (tTp < tEntry || tickPast) {
+        return { ...base, status: "invalid", reason: `Peluang terlewat: harga sudah mencapai TP1 ${tp1.toFixed(2)} sebelum entry ${s.entry_price.toFixed(2)} tersentuh.`, events: ["invalid"] };
+      }
+    }
     const touched =
       s.entry_type === "market" ||
       fine != null ||

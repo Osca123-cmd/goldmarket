@@ -237,6 +237,7 @@ function toStored(r: Record<string, any>): StoredSetup {
     entry_high: r.entry_high,
     invalidation: r.invalidation ?? NaN,
     sl: r.sl,
+    tp1: r.tp1 ?? undefined,
     created_at_sec: sec(r.created_at)!,
     expires_at_sec: sec(r.expires_at)!,
     status: r.status,

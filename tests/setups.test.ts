@@ -53,6 +53,33 @@ describe("lifecycle peluang", () => {
     expect(evaluateStatus(g, { nowSec: 1_000_700, price: 3004, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("approaching");
   });
 
+  describe("peluang terlewat: TP1 tersentuh sebelum entry → invalid", () => {
+    // BUY limit 3000, TP1 3005: harga dari 3002 naik ke TP1 tanpa turun ke entry
+    const b: StoredSetup = { ...base, tp1: 3005 };
+    it("M5 menyentuh TP1 lebih dulu → invalid", () => {
+      const m5 = [c(1_000_500, 3002, 3005.5, 3001, 3005)];
+      const u = evaluateStatus(b, { nowSec: 1_000_900, price: 3004, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true });
+      expect(u.status).toBe("invalid");
+      expect(u.reason).toMatch(/Peluang terlewat/);
+    });
+    it("entry lebih dulu, lalu TP1 → entry tersentuh (bukan terlewat)", () => {
+      const m5 = [c(1_000_500, 3002, 3002, 2999.8, 3001), c(1_000_800, 3001, 3005.5, 3001, 3005)];
+      expect(evaluateStatus(b, { nowSec: 1_001_200, price: 3004, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true }).status).toBe("entry_touched");
+    });
+    it("entry & TP1 di candle yang sama → entry tersentuh", () => {
+      const m5 = [c(1_000_500, 3002, 3005.5, 2999.5, 3004)];
+      expect(evaluateStatus(b, { nowSec: 1_000_900, price: 3004, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true }).status).toBe("entry_touched");
+    });
+    it("tick harga melewati TP1 tanpa candle → invalid", () => {
+      expect(evaluateStatus(b, { nowSec: 1_000_700, price: 3005.2, confirmCandles: [], mainBias: "bullish", dataOk: true }).status).toBe("invalid");
+    });
+    it("entry market dan setup lama tanpa TP1 tidak terpengaruh", () => {
+      const m5 = [c(1_000_500, 3002, 3005.5, 3001, 3005)];
+      expect(evaluateStatus({ ...b, entry_type: "market" }, { nowSec: 1_000_900, price: 3004, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true }).status).toBe("entry_touched");
+      expect(evaluateStatus(base, { nowSec: 1_000_900, price: 3004, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true }).status).toBe("approaching");
+    });
+  });
+
   it("waktu sentuhan = awal candle M5 pertama yang menyentuh, bukan waktu deteksi", () => {
     const m5 = [c(1_000_200, 3002, 3003, 2999, 3002), c(1_000_500, 3002, 3003, 3001, 3002), c(1_000_800, 3002, 3002, 2999.5, 3001)];
     const u = evaluateStatus(base, { nowSec: 1_001_700, price: 3002, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true });
