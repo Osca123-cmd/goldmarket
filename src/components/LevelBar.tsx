@@ -9,13 +9,16 @@ const clamp = (v: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const pct = (t: number) => `${t * 100}%`;
 
 /** Gelembung emas + tangkai di atas bar; gelembung ditahan di dalam bar supaya tidak terpotong di tepi. */
-function Pin({ at, text }: { at: number; text: string }) {
+function Pin({ at, text, muted }: { at: number; text: string; muted?: boolean }) {
   return (
     <>
-      <span className="num absolute -top-10 -translate-x-1/2 whitespace-nowrap rounded-lg bg-gold px-2 py-1 text-xs font-extrabold text-bg" style={{ left: pct(clamp(at, 0.14, 0.86)) }}>
+      <span
+        className={cx("num absolute -top-10 -translate-x-1/2 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-extrabold", muted ? "border border-line bg-surface-2 text-ink" : "bg-gold text-bg")}
+        style={{ left: pct(clamp(at, muted ? 0.24 : 0.14, muted ? 0.76 : 0.86)) }}
+      >
         {text}
       </span>
-      <span className="absolute -top-3 h-[18px] w-0.5 -translate-x-1/2 bg-gold" style={{ left: pct(at) }} aria-hidden />
+      <span className={cx("absolute -top-3 h-[18px] w-0.5 -translate-x-1/2", muted ? "bg-muted" : "bg-gold")} style={{ left: pct(at) }} aria-hidden />
     </>
   );
 }
@@ -23,14 +26,15 @@ function Pin({ at, text }: { at: number; text: string }) {
 /**
  * Bar progres sinyal: kiri SL, kanan TP3 (searah untung, untuk BUY maupun SELL). Sisi rugi merah, sisi untung hijau,
  * bagian antara entry dan harga sekarang diisi; tanpa harga (riwayat selesai) diisi sampai TP tertinggi / SL.
+ * Belum kena entry (`entered` false): tidak ada isian — posisi harga hanya ditandai netral, supaya tidak terlihat seperti floating.
  */
-export function SignalBar({ s, price, priceText }: { s: SignalLevels; price: number | null; priceText?: string }) {
+export function SignalBar({ s, price, priceText, entered = true }: { s: SignalLevels; price: number | null; priceText?: string; entered?: boolean }) {
   const d = s.direction === "BUY" ? 1 : -1;
   const full = d * (s.tp3 - s.sl) || 1;
   const at = (p: number) => clamp((d * (p - s.sl)) / full);
   const tpHit = s.outcome_tp ?? 0;
   const tEntry = at(s.entry_price);
-  const tEnd = price != null ? at(price) : tpHit > 0 ? at([s.tp1, s.tp2, s.tp3][tpHit - 1]) : s.outcome === "loss" ? 0 : tEntry;
+  const tEnd = !entered ? tEntry : price != null ? at(price) : tpHit > 0 ? at([s.tp1, s.tp2, s.tp3][tpHit - 1]) : s.outcome === "loss" ? 0 : tEntry;
   const gain = tEnd >= tEntry;
   const pip = s.pip_size || 0.1;
   const ticks = [
@@ -73,8 +77,13 @@ export function SignalBar({ s, price, priceText }: { s: SignalLevels; price: num
             {k.hit && " ✓"}
           </span>
         ))}
-        {price != null && <Pin at={at(price)} text={priceText ?? fmt(price)} />}
+        {price != null && <Pin at={at(price)} text={entered ? (priceText ?? fmt(price)) : `${fmt(price)} · belum entry`} muted={!entered} />}
       </div>
+      {!entered && price != null && (
+        <p className="mb-3 text-xs text-muted">
+          Belum kena entry — floating, TP, dan BE mulai dihitung setelah harga menyentuh entry <span className="num text-ink">{fmt(s.entry_price)}</span> ({fmt(Math.abs(price - s.entry_price) / pip, 0)} pips lagi).
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-1 @[17rem]:grid-cols-5">
         {tiles.map((t) => (
           <div key={t.k} className={cx("min-w-0 rounded-xl px-1 py-2 text-center", "hit" in t && t.hit ? "bg-buy/15" : "bg-surface-2")}>

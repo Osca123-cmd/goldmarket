@@ -13,7 +13,7 @@ import { Disclaimer, Empty, ago, cx, fmt, useNow } from "@/components/ui";
 import { ZoneBar } from "@/components/LevelBar";
 import { Mascot, type MascotKind, type MascotMood } from "@/components/Mascot";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow } from "@/lib/market";
+import { effectiveStatus, floatingPips, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow, type SetupRow } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
 import { RETIRED_STRATEGIES, STRATEGY_LABEL } from "@/core/config";
 import { gradeOf } from "@/core/outcome";
@@ -110,7 +110,8 @@ function LiveSignal() {
         const min = f.minScore === "" ? (settings?.min_score?.[s.timeframe] ?? 60) : Number(f.minScore);
         if (s.score < min && !isRunningSignal(s)) return false; // sinyal berjalan selalu tampil
         if (f.session && (s.session ?? "off") !== f.session) return false;
-        if (f.status === "active" && !isActiveSignal(s)) return false;
+        // sinyal berjalan tetap tampil sampai selesai (termasuk setelah TP1, SL di BE)
+        if (f.status === "active" && !isActiveSignal(s) && !isRunningSignal(s)) return false;
         if (f.status && f.status !== "active" && f.status !== "all" && s.status !== f.status) return false;
         if (f.eligible === "yes" && !s.eligible) return false;
         if (f.eligible === "no" && s.eligible) return false;
@@ -164,7 +165,7 @@ function LiveSignal() {
             ? ["Engine belum mengirim analisis terbaru.", "Halaman ini diperbarui sendiri begitu engine kembali."]
             : showSignals
               ? [
-                  list.length === 1 ? `Sinyal ${one.direction} ${one.timeframe} ${isRunningSignal(one) ? "sedang berjalan" : "siap, menunggu entry"}.` : `${list.length} sinyal aktif.`,
+                  list.length === 1 ? runningTitle(one, price) : `${list.length} sinyal aktif.`,
                   "Level lengkap ada di bawah. Website ini tidak membuka posisi di broker.",
                 ]
               : [
@@ -321,6 +322,14 @@ function LiveSignal() {
       <Disclaimer />
     </div>
   );
+}
+
+function runningTitle(s: SetupRow, price: number | null): string {
+  if (!isRunningSignal(s)) return `Sinyal ${s.direction} ${s.timeframe} siap, menunggu entry.`;
+  const tp = s.outcome_tp ?? 0;
+  if (tp > 0) return `TP${tp} tersentuh — SL sudah di BE (${s.direction} ${s.timeframe}).`;
+  const f = price != null ? floatingPips(s.direction, s.entry_price, price, s.pip_size || 0.1) : null;
+  return `Sinyal ${s.direction} ${s.timeframe} berjalan${f != null ? `, floating ${f > 0 ? "+" : ""}${fmt(f, 0)} pips` : ""}.`;
 }
 
 function hhmm(iso: string | null, tz: string): string {

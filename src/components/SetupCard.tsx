@@ -23,10 +23,10 @@ const ORDER: Record<SetupRow["entry_type"], string> = { market: "Order market", 
 export function SetupCard({ s, price, tz, now, pipSize = 0.1, bare }: { s: SetupRow; price: number | null; tz: string; now: number; minScore?: number; pipSize?: number; /** tanpa bingkai, untuk ditaruh langsung di panel */ bare?: boolean }) {
   const [open, setOpen] = useState(false);
   const pip = s.pip_size || pipSize;
-  const dist = price != null ? Math.abs(price - s.entry_price) / pip : s.distance_pips;
   const active = isActiveSignal(s);
   const running = isRunningSignal(s);
   const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
+  const tpHit = s.outcome_tp ?? 0;
   const link = "rounded text-sm font-medium text-gold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
   return (
     <article className={cx("fade-in", bare ? "px-4 py-5 sm:px-6" : "rounded-2xl border border-line bg-surface-2/30 p-4 sm:p-5", !active && !running && "opacity-75")}>
@@ -34,20 +34,33 @@ export function SetupCard({ s, price, tz, now, pipSize = 0.1, bare }: { s: Setup
         <span className={cx("text-xl font-bold", s.direction === "BUY" ? "text-buy" : "text-sell")}>{s.direction}</span>
         <span className="text-xl font-semibold text-ink">{s.timeframe}</span>
         <span className="text-sm text-muted">{STRATEGY_LABEL[s.strategy]}</span>
-        <span className={cx("ml-auto text-sm font-medium", STATUS_TEXT[s.status])}>{OPPORTUNITY_STATUS_LABEL[s.status]}</span>
+        <span className={cx("ml-auto text-sm font-medium", running ? (tpHit ? "text-buy" : "text-info") : STATUS_TEXT[s.status])}>
+          {running ? (tpHit ? `TP${tpHit} tersentuh` : "Berjalan") : s.status === "approaching" ? "Menunggu entry" : OPPORTUNITY_STATUS_LABEL[s.status]}
+        </span>
       </div>
       <p className="mt-1 text-xs text-muted">
         {ORDER[s.entry_type]}, konfirmasi di {s.confirm_tf}. Skor kualitas {s.score} dari 100{s.confirmed_at ? ", sudah terkonfirmasi" : ""}.
       </p>
       {!s.eligible && <p className="mt-1 text-xs text-warn">Belum layak dikirim sebagai sinyal: {s.status_reason ?? "syarat wajib belum terpenuhi"}</p>}
 
+      {running && (
+        <p className="mt-3 text-sm text-ink">
+          Floating{" "}
+          <span className={cx("num font-bold", float == null ? "text-muted" : float >= 0 ? "text-buy" : "text-sell")}>{float == null ? "—" : `${float > 0 ? "+" : ""}${fmt(float, 1)} pips`}</span>
+        </p>
+      )}
+      {running && tpHit > 0 && (
+        <p className="mt-2 rounded-xl border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-ink">
+          <strong className="text-gold">TP{tpHit} tersentuh — geser SL ke entry <span className="num">{fmt(s.entry_price)}</span> (BE).</strong> Bila harga kembali ke entry, sinyal ditutup menang +{fmt(Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip, 0)} pips.
+        </p>
+      )}
+
       <div className="mt-2">
-        <SignalBar s={s} price={price} priceText={float != null ? `${float > 0 ? "+" : ""}${fmt(float, 0)} pips` : undefined} />
+        <SignalBar s={s} price={price} entered={running} priceText={float != null ? `${float > 0 ? "+" : ""}${fmt(float, 0)} pips` : undefined} />
       </div>
 
       <p className="mt-3 text-xs text-muted">
         {s.eligible && s.status_reason ? `${s.status_reason} ` : ""}
-        {!running && dist != null ? `Harga ${fmt(dist, 0)} pips dari entry. ` : ""}
         {active ? `Berlaku sampai ${fmtTime(s.expires_at, tz, true)}, dibuat ${ago(s.created_at, now)}.` : ""}
       </p>
 

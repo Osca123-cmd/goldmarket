@@ -231,6 +231,9 @@ for (const vp of viewports) {
     if (p === "/opportunities/") await page.getByLabel("Kinerja sinyal").screenshot({ path: join(OUT, `${vp.name}-overall-performance.png`) }).catch(() => {});
     if (p === "/opportunities/" && (await page.getByText("Dikecualikan", { exact: true }).count()) === 0) problems.push(`${vp.name} ${p}: label "Dikecualikan" tidak tampil`);
     if (p === "/opportunities/") {
+      // kartu sinyal berjalan setelah TP1: floating + peringatan geser SL ke BE; kartu belum entry: tanpa floating
+      if ((await page.getByText(/TP1 tersentuh — geser SL ke entry/).count()) === 0) problems.push(`${vp.name} ${p}: peringatan BE di kartu sinyal berjalan tidak tampil`);
+      if ((await page.getByText("Menunggu entry", { exact: true }).count()) > 0 && (await page.getByText(/belum entry/).count()) === 0) problems.push(`${vp.name} ${p}: kartu belum entry tidak menandai "belum entry"`);
       // riwayat sinyal: baris berjalan bisa diketuk → tangga TP + floating
       const row = page.getByRole("button", { name: /TP1 tersentuh/ }).first();
       if ((await row.count()) === 0) problems.push(`${vp.name} ${p}: baris riwayat "TP1 tersentuh" tidak ditemukan`);
