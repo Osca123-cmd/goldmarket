@@ -40,6 +40,14 @@ describe("lifecycle peluang", () => {
     expect(u.status).toBe("invalid");
   });
 
+  it("MSNR flip melawan bias utama tidak dibatalkan bias; tetap bisa kena entry, invalidasi struktur tetap berlaku", () => {
+    const m: StoredSetup = { ...base, strategy: "msnr_flip" };
+    expect(evaluateStatus(m, { nowSec: 1_000_700, price: 3004, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("approaching");
+    expect(evaluateStatus(m, { nowSec: 1_000_700, price: 2999.9, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("entry_touched");
+    const broke = [c(1_000_500, 3002, 3002, 2994, 2995)];
+    expect(evaluateStatus(m, { nowSec: 1_000_900, price: 2995, confirmCandles: broke, mainBias: "bearish", dataOk: true }).status).toBe("invalid");
+  });
+
   it("waktu sentuhan = awal candle M5 pertama yang menyentuh, bukan waktu deteksi", () => {
     const m5 = [c(1_000_200, 3002, 3003, 2999, 3002), c(1_000_500, 3002, 3003, 3001, 3002), c(1_000_800, 3002, 3002, 2999.5, 3001)];
     const u = evaluateStatus(base, { nowSec: 1_001_700, price: 3002, confirmCandles: [], touchCandles: m5, mainBias: "bullish", dataOk: true });

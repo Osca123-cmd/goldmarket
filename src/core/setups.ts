@@ -124,7 +124,8 @@ export function evaluateStatus(
   if (broke) {
     return { ...base, status: "invalid", reason: `Candle ${s.confirm_tf} ditutup ${broke.close.toFixed(2)} melewati invalidasi ${s.invalidation.toFixed(2)}.`, events: ["invalid"] };
   }
-  if ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish")) {
+  // MSNR flip sengaja boleh melawan bias utama (dua arah), jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
+  if (s.strategy !== "msnr_flip" && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
     return { ...base, status: "invalid", reason: `Bias utama berbalik ${args.mainBias}.`, events: ["invalid"] };
   }
 
