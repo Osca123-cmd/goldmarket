@@ -1,6 +1,6 @@
 import type { Candle, Direction, EntryType, MarketBias, StrategyId, Timeframe } from "./types.ts";
 import { TF_SECONDS } from "./types.ts";
-import { planFor, type EngineConfig, type TfPair } from "./config.ts";
+import { TWO_WAY_STRATEGIES, planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
 import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level, type Swing } from "./structure.ts";
 import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevels } from "./instrument.ts";
@@ -141,8 +141,8 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
   const gates: Gate[] = [];
   gates.push({ key: "data", label: "Kualitas data", pass: true, note: "Lolos validasi data sebelum deteksi." });
   // sd_reversal sengaja dua arah, tetapi hanya saat TF bias besar ranging (dicek di detektornya);
-  // msnr_flip dua arah penuh (permintaan pengguna 20 Okt 2026): level yang ditembus + retest pertama sudah menandai pembalikan
-  const counterOk = (d.strategy === "sd_reversal" && c.analysis.tfs[c.config.biasTfs.major]?.bias === "ranging") || d.strategy === "msnr_flip";
+  // msnr_flip & fvg_retest dua arah penuh (permintaan pengguna 20 Okt 2026): level/celah segar sudah menandai arah dorongan
+  const counterOk = (d.strategy === "sd_reversal" && c.analysis.tfs[c.config.biasTfs.major]?.bias === "ranging") || TWO_WAY_STRATEGIES.includes(d.strategy);
   const biasOpposite = opposite(c.analysis.mainBias, d.direction) && !counterOk;
   const structOk = d.invalidation != null && !biasOpposite;
   gates.push({
@@ -155,7 +155,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
         : biasOpposite
           ? "Bias utama berlawanan."
           : counterOk && opposite(c.analysis.mainBias, d.direction)
-            ? `Invalidasi struktur terdefinisi; MSNR flip melawan bias utama diizinkan (level segar yang ditembus menandai pembalikan).`
+            ? `Invalidasi struktur terdefinisi; ${d.strategy === "fvg_retest" ? "FVG retest" : "MSNR flip"} melawan bias utama diizinkan (strategi dua arah).`
             : counterOk && d.strategy === "sd_reversal"
             ? `Invalidasi struktur terdefinisi; ${c.config.biasTfs.major} ranging sehingga reversal dua arah diizinkan.`
             : "Invalidasi struktur terdefinisi dan bias tidak berlawanan.",
@@ -624,6 +624,80 @@ export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectCont
   );
 }
 
+/**
+ * FVG (fair value gap): 3 candle a, b, c TF konteks dalam 20 bar terakhir — BUY: c.low > a.high (celah ≥ 0,15 dan ≤ 2 ATR),
+ * candle b dorongan naik (badan ≥ 0,8 ATR). Masih SEGAR: sejak c belum ada candle yang masuk celah dan belum ada close
+ * di bawah a.high. SELL cermin. Yang terbaru dipakai lebih dulu.
+ */
+export function findFvg(direction: Direction, bars: Candle[], atr: number): { low: number; high: number; index: number } | null {
+  const n = bars.length - 1;
+  for (let j = n - 1; j >= Math.max(1, n - 20); j--) {
+    const a = bars[j - 1];
+    const b = bars[j];
+    const c = bars[j + 1];
+    const low = direction === "BUY" ? a.high : c.high;
+    const high = direction === "BUY" ? c.low : a.low;
+    const gap = high - low;
+    if (gap < 0.15 * atr || gap > 2 * atr) continue;
+    if ((direction === "BUY" ? b.close - b.open : b.open - b.close) < 0.8 * atr) continue;
+    const after = bars.slice(j + 2);
+    const entered = after.some((x) => (direction === "BUY" ? x.low <= high : x.high >= low));
+    const closedThrough = after.some((x) => (direction === "BUY" ? x.close < low : x.close > high));
+    if (entered || closedThrough) continue;
+    return { low, high, index: j };
+  }
+  return null;
+}
+
+/** FVG retest: retest pertama celah harga yang ditinggalkan candle dorongan; dua arah (searah maupun melawan tren H1). */
+export function detectFvgRetest(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const cs = c.candles[pair.context] ?? [];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  const major = c.config.biasTfs.major;
+  if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  const a = ctx.atr;
+  const f = findFvg(direction, cs, a);
+  if (!f) return null;
+  const s = sgn(direction);
+  const edge = direction === "BUY" ? f.high : f.low;
+  if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+  const invalidation = direction === "BUY" ? f.low - 0.25 * a : f.high + 0.25 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const impulse = cs[f.index];
+  // BOS: candle dorongan menutup melewati swing lawan terakhir sebelum celah (hanya menambah skor struktur)
+  const lastSwing = ctx.swings
+    .filter((sw) => sw.kind === (direction === "BUY" ? "high" : "low") && sw.index < f.index)
+    .sort((x, y) => y.index - x.index)[0];
+  const bos = lastSwing != null && s * (impulse.close - lastSwing.price) > 0;
+  const majorBias = c.analysis.tfs[major]?.bias;
+  const withTrend = majorBias === dirBias(direction);
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `FVG retest: ${withTrend ? `searah tren ${major} (${majorBias})` : `melawan tren ${major} (${majorBias ?? "—"}) — skor tren 0`}; candle dorongan ${direction === "BUY" ? "naik" : "turun"} ${pair.context} (${hhmm(impulse.time)} UTC) meninggalkan celah ${f.low.toFixed(2)}–${f.high.toFixed(2)} yang belum pernah diisi${bos ? `, sekaligus menembus swing ${lastSwing!.price.toFixed(2)} (BOS)` : ""}.`,
+    `Area retest = celah; invalidasi bila harga kembali ke ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "fvg_retest",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow: f.low,
+      zoneHigh: f.high,
+      invalidation,
+      levelTouches: bos ? 2 : 1,
+      anchor: `fvg:${impulse.time}`,
+      confirmCandles: confCandles,
+      confirmAfter: cs[f.index + 1].time + TF_SECONDS[pair.context],
+      reasons,
+    },
+    c,
+  );
+}
+
 export function detectAll(c: DetectContext): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   for (const pair of c.config.pairs) {
@@ -651,6 +725,10 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       if (c.config.strategies.includes("msnr_flip")) {
         const m = detectMsnrFlip(dir, pair, c);
         if (m) out.push(m);
+      }
+      if (c.config.strategies.includes("fvg_retest")) {
+        const g = detectFvgRetest(dir, pair, c);
+        if (g) out.push(g);
       }
     }
   }

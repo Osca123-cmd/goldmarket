@@ -1,6 +1,6 @@
 import type { Candle, Direction, EntryType, OpportunityStatus, MarketBias, StrategyId, Timeframe } from "./types.ts";
 import { ACTIVE_STATUSES, TF_SECONDS } from "./types.ts";
-import type { EngineConfig } from "./config.ts";
+import { TWO_WAY_STRATEGIES, type EngineConfig } from "./config.ts";
 import type { SetupCandidate } from "./strategies.ts";
 import { isBearishConfirmation, isBullishConfirmation } from "./structure.ts";
 import { priceToPips, type InstrumentSpec } from "./instrument.ts";
@@ -124,8 +124,8 @@ export function evaluateStatus(
   if (broke) {
     return { ...base, status: "invalid", reason: `Candle ${s.confirm_tf} ditutup ${broke.close.toFixed(2)} melewati invalidasi ${s.invalidation.toFixed(2)}.`, events: ["invalid"] };
   }
-  // MSNR flip sengaja boleh melawan bias utama (dua arah), jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
-  if (s.strategy !== "msnr_flip" && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
+  // strategi dua arah (MSNR flip, FVG retest) sengaja boleh melawan bias utama, jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
+  if (!TWO_WAY_STRATEGIES.includes(s.strategy) && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
     return { ...base, status: "invalid", reason: `Bias utama berbalik ${args.mainBias}.`, events: ["invalid"] };
   }
 
