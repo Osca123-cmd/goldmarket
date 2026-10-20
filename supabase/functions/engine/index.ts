@@ -999,6 +999,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     limitDepth: undefined,
     // "kandang babi" → S&D memperlakukan H1 ranging, khusus live; undefined → hash riset tidak berubah
     chopRanging: undefined,
+    // arah dari setup & momentum, khusus live; undefined → hash riset tidak berubah
+    direction: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);

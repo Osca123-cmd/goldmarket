@@ -201,6 +201,7 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
       confirmCandles: i.rawCandles[s.confirm_tf] ?? [],
       touchCandles: i.touchCandles,
       mainBias: analysis.mainBias,
+      twoWay: cfg.direction?.twoWay,
       dataOk: quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec && i.feedStatus !== "disconnected",
     });
     // jam istirahat: setup yang belum kena entry tidak dibiarkan menunggu semalaman (sinyal berjalan tetap dilacak)

@@ -106,6 +106,8 @@ export function evaluateStatus(
     touchCandles?: Candle[];
     mainBias: MarketBias;
     dataOk: boolean;
+    /** strategi yang tidak dibatalkan oleh bias utama (config.direction.twoWay); default TWO_WAY_STRATEGIES */
+    twoWay?: StrategyId[];
   },
 ): StatusUpdate {
   const base: StatusUpdate = {
@@ -128,7 +130,7 @@ export function evaluateStatus(
   }
   // strategi dua arah (FVG retest) dan S&D reversal (pantulan dua arah di range / "kandang babi") sengaja boleh melawan
   // bias utama, jadi tidak dibatalkan oleh bias; invalidasi struktur di atas tetap berlaku
-  if (!TWO_WAY_STRATEGIES.includes(s.strategy) && s.strategy !== "sd_reversal" && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
+  if (!(args.twoWay ?? TWO_WAY_STRATEGIES).includes(s.strategy) && s.strategy !== "sd_reversal" && ((s.direction === "BUY" && args.mainBias === "bearish") || (s.direction === "SELL" && args.mainBias === "bullish"))) {
     return { ...base, status: "invalid", reason: `Bias utama berbalik ${args.mainBias}.`, events: ["invalid"] };
   }
 

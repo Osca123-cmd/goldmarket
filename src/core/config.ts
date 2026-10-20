@@ -60,6 +60,14 @@ export interface EngineConfig {
    * lebih baik di kedua paruh periode. Memblokir strategi ikut-tren di dalam kotak tidak membantu.
    */
   chopRanging?: { bars: number; maxAtr: number };
+  /**
+   * Arah sinyal dari setup & momentum, bukan dipaksa tren besar (permintaan pengguna 20 Okt 2026 malam):
+   *  - twoWay: strategi yang juga dicari melawan bias utama dan tidak dibatalkan saat bias berbalik;
+   *  - momentum: hanya arah EMA cepat vs lambat di TF kecil (BUY bila EMA cepat di atas).
+   * Uji candle nyata 30 Agu–19 Okt (4 strategi live): 419 trade +6.833 (+16,3/sinyal, drawdown 854) →
+   * 284 trade +7.528 (+26,5/sinyal, win 58%, drawdown 523), lebih baik di kedua paruh periode.
+   */
+  direction?: { twoWay: StrategyId[]; momentum?: { tf: Timeframe; fast: number; slow: number } };
   /** aturan PENGIRIMAN sinyal live (bukan deteksi; tidak memengaruhi backtest). Tidak diisi = nonaktif. */
   delivery?: DeliveryRules;
 }
@@ -125,6 +133,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   invalidationTolPips: 0,
   limitDepth: { fvg_retest: 1 },
   chopRanging: { bars: 4, maxAtr: 2 },
+  direction: { twoWay: ["crt", "fvg_retest", "order_block"], momentum: { tf: "M15", fast: 8, slow: 21 } },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {

@@ -807,43 +807,68 @@ export function chopRangingContext(c: DetectContext): DetectContext | null {
   };
 }
 
-export function detectAll(c: DetectContext): SetupCandidate[] {
+const DETECTORS: [StrategyId, (direction: Direction, pair: TfPair, c: DetectContext) => SetupCandidate | null][] = [
+  ["trend_pullback", detectTrendPullback],
+  ["breakout_retest", detectBreakoutRetest],
+  ["liquidity_sweep", detectLiquiditySweep],
+  ["sd_reversal", detectSdReversal],
+  ["crt", detectCrt],
+  ["msnr_flip", detectMsnrFlip],
+  ["fvg_retest", detectFvgRetest],
+  ["order_block", detectOrderBlock],
+];
+
+function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   const sdCtx = c.config.strategies.includes("sd_reversal") ? (chopRangingContext(c) ?? c) : c;
   for (const pair of c.config.pairs) {
     for (const dir of ["BUY", "SELL"] as Direction[]) {
-      if (c.config.strategies.includes("trend_pullback")) {
-        const p = detectTrendPullback(dir, pair, c);
-        if (p) out.push(p);
-      }
-      if (c.config.strategies.includes("breakout_retest")) {
-        const b = detectBreakoutRetest(dir, pair, c);
-        if (b) out.push(b);
-      }
-      if (c.config.strategies.includes("liquidity_sweep")) {
-        const l = detectLiquiditySweep(dir, pair, c);
-        if (l) out.push(l);
-      }
-      if (c.config.strategies.includes("sd_reversal")) {
-        const r = detectSdReversal(dir, pair, sdCtx);
-        if (r) out.push(r);
-      }
-      if (c.config.strategies.includes("crt")) {
-        const x = detectCrt(dir, pair, c);
+      for (const [id, detect] of DETECTORS) {
+        if (!c.config.strategies.includes(id) || !only(id)) continue;
+        const x = detect(dir, pair, id === "sd_reversal" ? sdCtx : c);
         if (x) out.push(x);
       }
-      if (c.config.strategies.includes("msnr_flip")) {
-        const m = detectMsnrFlip(dir, pair, c);
-        if (m) out.push(m);
-      }
-      if (c.config.strategies.includes("fvg_retest")) {
-        const g = detectFvgRetest(dir, pair, c);
-        if (g) out.push(g);
-      }
-      if (c.config.strategies.includes("order_block")) {
-        const o = detectOrderBlock(dir, pair, c);
-        if (o) out.push(o);
-      }
+    }
+  }
+  return out;
+}
+
+/** arah momentum: BUY bila EMA cepat di atas EMA lambat pada candle tertutup TF momentum, selain itu SELL */
+export function momentumDirection(bars: Candle[], fast: number, slow: number): { direction: Direction; fast: number; slow: number } | null {
+  const closes = bars.slice(-150).map((b) => b.close);
+  if (closes.length < slow) return null;
+  const ema = (n: number) => {
+    const k = 2 / (n + 1);
+    let e = closes[0];
+    for (let i = 1; i < closes.length; i++) e = closes[i] * k + e * (1 - k);
+    return e;
+  };
+  const f = ema(fast);
+  const sl = ema(slow);
+  return { direction: f > sl ? "BUY" : "SELL", fast: f, slow: sl };
+}
+
+export function detectAll(c: DetectContext): SetupCandidate[] {
+  let out = runDetectors(c, () => true);
+  const rule = c.config.direction;
+  // arah dari setup, bukan dipaksa tren besar: strategi twoWay juga dicari melawan bias utama (dideteksi seperti bias
+  // utama netral, jadi skor tren = ranging); hanya kandidat yang melawan bias & belum ada yang ditambahkan
+  if (rule?.twoWay.length && c.analysis.mainBias !== "ranging") {
+    const have = new Set(out.map((x) => x.identityKey));
+    const neutral: DetectContext = { ...c, analysis: { ...c.analysis, mainBias: "ranging" } };
+    for (const x of runDetectors(neutral, (id) => rule.twoWay.includes(id) && id !== "sd_reversal")) {
+      if (!opposite(c.analysis.mainBias, x.direction) || have.has(x.identityKey)) continue;
+      x.reasons.push(`Melawan bias utama ${c.analysis.mainBias}: diizinkan karena arah ditentukan setup & momentum, bukan tren besar.`);
+      out.push(x);
+    }
+  }
+  // momentum TF kecil menentukan arah: kandidat yang berlawanan tidak dibuat (bisa muncul lagi saat momentum searah)
+  if (rule?.momentum) {
+    const m = momentumDirection(c.candles[rule.momentum.tf] ?? [], rule.momentum.fast, rule.momentum.slow);
+    if (m) {
+      out = out.filter((x) => x.direction === m.direction);
+      const note = `Momentum ${rule.momentum.tf} ${m.direction === "BUY" ? "naik" : "turun"}: EMA${rule.momentum.fast} ${m.fast.toFixed(2)} ${m.direction === "BUY" ? ">" : "<"} EMA${rule.momentum.slow} ${m.slow.toFixed(2)} → hanya ${m.direction}.`;
+      for (const x of out) x.reasons.push(note);
     }
   }
   return out.filter((x) => x.score.total >= c.config.engineMinScore);

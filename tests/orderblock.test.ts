@@ -42,7 +42,7 @@ describe("Order Block: candle berlawanan terakhir sebelum dorongan yang menembus
     bars[24] = bar(24, 4101.5, 4101.8, 4097, 4100);
     expect(findOrderBlock("BUY", bars, [swH], atr)).toBeNull();
   });
-  it("detectAll (order_block) di data demo: tidak pernah melawan bias utama, SL/TP rencana TF", () => {
+  it("detectAll (order_block) di data demo: SL/TP rencana TF; melawan bias utama hanya lewat aturan arah (twoWay)", () => {
     const cfg = mergeConfig({ strategies: ["order_block"] });
     let found = 0;
     for (let t = Date.parse("2026-07-01T00:00:00Z") / 1000; t < Date.parse("2026-07-15T00:00:00Z") / 1000; t += 1800) {
@@ -52,7 +52,7 @@ describe("Order Block: candle berlawanan terakhir sebelum dorongan yang menembus
       const analysis = analyzeMarket({ nowSec: t, candles: closed }, analysisTfs(cfg), cfg.biasTfs);
       for (const c of detectAll({ analysis, candles: closed, price: demoPrice(t / 60), spreadPips: 3, nowSec: t, dataTime: t, config: cfg })) {
         expect(c.strategy).toBe("order_block");
-        expect(analysis.mainBias).not.toBe(c.direction === "BUY" ? "bearish" : "bullish");
+        if (analysis.mainBias === (c.direction === "BUY" ? "bearish" : "bullish")) expect(c.reasons.some((r) => r.startsWith("Melawan bias utama"))).toBe(true);
         expect(c.slPips).toBe(cfg.planByTf[c.timeframe]!.slPips);
         // entry limit Order Block tetap di tepi dekat zona (BUY: atas, SELL: bawah)
         if (c.entryType === "limit") expect(c.entry).toBeCloseTo(c.direction === "BUY" ? c.entryHigh : c.entryLow, 1);

@@ -34,7 +34,8 @@ describe("CRT: sapuan ujung range H1 lalu kembali ke dalam", () => {
     expect(findCrtSweep("SELL", R, [sweep], atr)).toEqual(sweep);
   });
   it("detectAll dengan crt aktif berjalan di data demo; setup crt memakai rencana SL/TP TF", () => {
-    const cfg = mergeConfig({ strategies: ["crt"] });
+    // tanpa filter arah momentum (diuji di direction.test.ts) agar detektor CRT sendiri teruji
+    const cfg = mergeConfig({ strategies: ["crt"], direction: undefined });
     let found = 0;
     for (let t = Date.parse("2026-07-14T06:00:00Z") / 1000; t < Date.parse("2026-07-16T06:00:00Z") / 1000; t += 1800) {
       const raw = demoView(t);
