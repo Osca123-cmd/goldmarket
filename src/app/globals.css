@@ -84,14 +84,11 @@ body {
 .fade-in { animation: fade-in .25s ease-out; }
 @media (prefers-reduced-motion: reduce) { .pulse-dot, .fade-in { animation: none; } }
 
-/* Ikon sinyal live: gelombang menyala bergantian, radar berdenyut */
-@keyframes wave-on { 0%, 100% { opacity: .25 } 40%, 60% { opacity: 1 } }
-.wave { animation: wave-on 1.8s ease-in-out infinite; }
-.wave-1 { animation-delay: 0s; }
-.wave-2 { animation-delay: .25s; }
-.wave-3 { animation-delay: .5s; }
-@keyframes ping-ring { 0% { transform: scale(.6); opacity: .55 } 100% { transform: scale(1.6); opacity: 0 } }
-.ping-ring { animation: ping-ring 2.2s cubic-bezier(0, 0, .2, 1) infinite; transform-origin: center; }
-@keyframes spin-slow { to { transform: rotate(360deg) } }
-.spin-slow { animation: spin-slow 6s linear infinite; transform-origin: center; }
-@media (prefers-reduced-motion: reduce) { .wave, .ping-ring, .spin-slow { animation: none; } }
+/* Maskot banteng/beruang Peluang: hanya bergerak saat data live (.mascot-live) */
+@keyframes m-nod { 0%, 100% { transform: rotate(-5deg) translateY(0) } 50% { transform: rotate(5deg) translateY(-2px) } }
+@keyframes m-blink { 0%, 44%, 52%, 100% { transform: scaleY(1) } 48% { transform: scaleY(.1) } }
+@keyframes m-bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-2px) } }
+.mascot-live .m-nod { transform-origin: 30px 40px; animation: m-nod 1.2s ease-in-out infinite; }
+.mascot-live .m-eye { transform-box: fill-box; transform-origin: center; animation: m-blink 2.4s ease-in-out infinite; }
+.mascot-live .m-bob { animation: m-bob 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .mascot-live .m-nod, .mascot-live .m-eye, .mascot-live .m-bob { animation: none; } }

@@ -11,6 +11,7 @@ import { HistoryPanel, SignalHistoryItem, relTime } from "@/components/SignalHis
 import { PushToggle } from "@/components/PushToggle";
 import { Disclaimer, Empty, ago, cx, fmt, useNow } from "@/components/ui";
 import { ZoneBar } from "@/components/LevelBar";
+import { Mascot, type MascotKind, type MascotMood } from "@/components/Mascot";
 import { useAuth } from "@/lib/auth";
 import { effectiveStatus, isActiveSignal, isRunningSignal, useSignalHistory, type AnalysisRow } from "@/lib/market";
 import { OPPORTUNITY_STATUS_LABEL } from "@/core/setups";
@@ -34,13 +35,13 @@ const TREND: Record<string, { word: string; cls: string }> = {
   ranging: { word: "datar", cls: "text-muted" },
 };
 
-const FEED_LINE: Record<FeedStatus, { text: string; dot: string }> = {
-  live: { text: "Data live", dot: "bg-buy" },
-  delayed: { text: "Data tertunda (delayed)", dot: "bg-warn" },
-  demo: { text: "Data simulasi (demo)", dot: "bg-info" },
-  market_closed: { text: "Pasar tutup", dot: "bg-muted" },
-  reconnecting: { text: "Menyambung ulang ke feed", dot: "bg-warn" },
-  disconnected: { text: "Feed terputus", dot: "bg-sell" },
+const FEED_LINE: Record<FeedStatus, { label: string; pill: string }> = {
+  live: { label: "Live", pill: "bg-buy/15 text-buy" },
+  delayed: { label: "Data tertunda", pill: "bg-warn/15 text-warn" },
+  demo: { label: "Data demo", pill: "bg-info/15 text-info" },
+  market_closed: { label: "Pasar tutup", pill: "bg-surface-2 text-muted" },
+  reconnecting: { label: "Menyambung ulang", pill: "bg-warn/15 text-warn" },
+  disconnected: { label: "Feed terputus", pill: "bg-sell/15 text-sell" },
 };
 
 interface Zone {
@@ -143,7 +144,11 @@ function LiveSignal() {
   const showSignals = list.length > 0 && f.status === "active";
   const watch = zones(analysis, price, pipSize);
   const quietLine = analysis?.reasons?.[0]?.startsWith(QUIET_PREFIX) ? analysis.reasons[0] : null;
-  const feedLine = fresh ? FEED_LINE[feed] : { text: "Engine belum mengirim analisis baru", dot: "bg-sell" };
+  const feedLine = quietLine && feed !== "market_closed" ? { label: "Jam istirahat", pill: "bg-surface-2 text-muted" } : fresh ? FEED_LINE[feed] : { label: "Engine tidak merespons", pill: "bg-sell/15 text-sell" };
+  // banteng = mencari BUY, beruang = mencari SELL, keduanya = belum ada arah / sinyal dua arah
+  const dirs = new Set(showSignals ? list.map((x) => x.direction) : watch.dir ? [watch.dir] : []);
+  const mascot: MascotKind = dirs.size === 1 ? (dirs.has("BUY") ? "bull" : "bear") : "both";
+  const mood: MascotMood = quietLine || feed === "market_closed" ? "sleep" : fresh && feed === "live" ? "live" : "still";
   const one = list[0];
   const [title, sub] =
     feed === "market_closed"
@@ -185,13 +190,19 @@ function LiveSignal() {
     <div className="space-y-4">
       <section className="overflow-hidden rounded-2xl border border-line bg-surface fade-in">
         <div className="px-4 pt-5 sm:px-6">
-          <p className="flex items-center gap-2 text-xs text-muted">
-            <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", feedLine.dot)} aria-hidden />
-            <span>
-              XAUUSD. {feedLine.text}
-              {analysis ? `, analisis ${ago(analysis.created_at, now)}` : ""}.
-            </span>
-          </p>
+          <div className="flex items-center gap-3">
+            <Mascot kind={mascot} mood={mood} />
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 text-base font-bold text-ink">
+                {feedLine.label}
+                <span className={cx("rounded-full px-2 py-0.5 text-[11px] font-bold", feedLine.pill)}>XAUUSD</span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                {mascot === "bull" ? "Bias BUY" : mascot === "bear" ? "Bias SELL" : showSignals ? "Sinyal BUY dan SELL" : "Belum ada arah"}
+                {analysis ? `, analisis ${ago(analysis.created_at, now)}` : ""}
+              </p>
+            </div>
+          </div>
           <h1 className="mt-3 text-xl font-semibold leading-snug text-ink sm:text-2xl">{title}</h1>
           <p className="mt-1 max-w-prose text-sm text-muted">{sub}</p>
           {analysis && (
