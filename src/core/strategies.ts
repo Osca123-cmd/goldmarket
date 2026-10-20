@@ -201,6 +201,8 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
     direction: d.direction,
     mainBias: c.analysis.mainBias,
     strongBias: c.analysis.strongBias,
+    infoBias: c.config.infoTf ? c.analysis.tfs[c.config.infoTf]?.bias : undefined,
+    infoTf: c.config.infoTf,
     levelTouches: d.levelTouches,
     hasStructuralInvalidation: d.invalidation != null,
     roomToTp1: !opposing || opposing.length === 0,

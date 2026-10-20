@@ -103,7 +103,9 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     spreadPips: i.spreadPips,
     thresholds: cfg.thresholds,
   });
-  const analysis = analyzeMarket({ nowSec: i.nowSec, candles: closed }, tfs, cfg.biasTfs);
+  // TF info (H4) ikut dianalisis bila datanya ada, tetapi tidak masuk requiredTfs kualitas data di atas
+  const withInfo = cfg.infoTf && closed[cfg.infoTf]?.length ? [...tfs, cfg.infoTf] : tfs;
+  const analysis = analyzeMarket({ nowSec: i.nowSec, candles: closed }, withInfo, cfg.biasTfs);
 
   const notifications: EngineNotification[] = [];
   const created: SetupCandidate[] = [];

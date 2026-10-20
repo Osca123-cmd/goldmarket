@@ -423,6 +423,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   // ---- analisis ----
   const raw: Partial<Record<Timeframe, Candle[]>> = {};
   for (const tf of analysisTfs(cfg)) raw[tf] = await loadCandles(db, provider.id, tf, 300);
+  // TF info (H4): untuk arah besar & bonus skor saja
+  if (cfg.infoTf && !raw[cfg.infoTf]) raw[cfg.infoTf] = await loadCandles(db, provider.id, cfg.infoTf, 300);
   // M5 bukan TF analisis: dipakai untuk waktu sentuhan entry & pelacakan hasil (sumbu SL/TP di antara tick harga)
   const m5 = raw.M5 ?? (await loadCandles(db, provider.id, "M5", 300));
   const since = iso(t0 - 3 * 86400);
@@ -990,6 +992,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     minSlAtrContext: Math.min(cfg.minSlAtrContext, BT_MIN_SL_ATR_CTX),
     // aturan pengiriman live tidak disimulasikan; undefined → tidak masuk hash versi
     delivery: undefined,
+    // bonus skor H4 khusus live; undefined → simulasi & hash versi backtest tidak berubah
+    infoTf: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);

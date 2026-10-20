@@ -20,6 +20,8 @@ export interface EngineConfig {
   thresholds: QualityThresholds;
   /** bias utama: TF besar (major) + TF pendukung (minor) — sejak 19 Okt 2026: H1 + M30 */
   biasTfs: { major: Timeframe; minor: Timeframe };
+  /** TF tambahan yang dianalisis HANYA untuk info & bonus skor tren (bukan filter, tidak ikut cek kualitas data). Sejak 20 Okt 2026: H4. */
+  infoTf?: Timeframe;
   pairs: TfPair[];
   strategies: StrategyId[];
   /** skor minimum agar engine menyimpan setup (filter per pengguna bisa lebih ketat) */
@@ -88,6 +90,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   thresholds: DEFAULT_THRESHOLDS,
   // hanya M15, M30, H1 (permintaan pengguna 19 Okt 2026): bias H1+M30, setup M15 & M30, konfirmasi candle M15
   biasTfs: { major: "H1", minor: "M30" },
+  infoTf: "H4",
   pairs: [
     { context: "M15", confirm: "M15" },
     { context: "M30", confirm: "M15" },

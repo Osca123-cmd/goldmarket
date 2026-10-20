@@ -61,7 +61,7 @@ Konfirmasi hanya memakai **candle tertutup** (`closedAsOf`). Harga intrabar dipa
 4. Area retest = level −0,15/+0,25 ATR (BUY); invalidasi = level ∓ 0,6 ATR.
 
 ### Strategi riset (hanya backtest; live hanya bila terbukti & disetujui)
-- **MSNR flip** (`detectMsnrFlip`, live sebagai **Eksperimen** sejak 20 Okt 2026): **dua arah** sejak 20 Okt 2026 (permintaan pengguna; sebelumnya hanya searah tren H1). Setup yang melawan bias utama tidak ditolak gate struktur, tetapi skor trennya 0 dan alasannya mencatat "melawan tren H1". Level = swing high (BUY) / swing low (SELL) TF konteks dalam 30 bar terakhir yang ditembus close ≥ 0,1 ATR (resistance jadi support / sebaliknya) dan masih segar — belum ada close kembali maupun retest. Area retest L −0,15/+0,2 ATR, invalidasi L ∓ 0,5 ATR. SL/TP mengikuti rencana per TF. Beda dari Breakout retest: satu level swing (A/V), hanya retest pertama.
+- **MSNR flip** (`detectMsnrFlip`, live sebagai **Eksperimen** sejak 20 Okt 2026): **dua arah** sejak 20 Okt 2026 (permintaan pengguna; sebelumnya hanya searah tren H1). Setup yang melawan bias utama tidak ditolak gate struktur dan tidak dibatalkan saat bias utama berlawanan (invalidasi struktur & kedaluwarsa tetap berlaku), tetapi skor trennya 0 (+5 bila H4 searah) dan alasannya mencatat "melawan tren H1". Level = swing high (BUY) / swing low (SELL) TF konteks dalam 30 bar terakhir yang ditembus close ≥ 0,1 ATR (resistance jadi support / sebaliknya) dan masih segar — belum ada close kembali maupun retest. Area retest L −0,15/+0,2 ATR, invalidasi L ∓ 0,5 ATR. SL/TP mengikuti rencana per TF. Beda dari Breakout retest: satu level swing (A/V), hanya retest pertama.
 - **20 Okt 2026**: MSNR flip dibuat dua arah (BUY & SELL) tanpa filter tren H1; SL/TP/RR tidak berubah. CRT tetap seperti semula.
 - **20 Okt 2026**: Breakout retest dan Liquidity sweep dihapus dari sinyal live atas permintaan pengguna (tetap disimulasikan di backtest). Strategi live: Supply/Demand reversal, CRT, MSNR flip.
 - **CRT · Candle Range Theory** (`detectCrt`, live sebagai **Eksperimen** sejak 20 Okt 2026 atas permintaan pengguna): range = candle H1 tertutup terakhir (0,5–3× ATR H1). Candle konteks (M15/M30) sesudahnya menyapu low (BUY) / high (SELL) range ≥ 0,1 ATR lalu menutup kembali di dalam range, tanpa close di luar lagi sesudahnya. Area entry di ujung range (−0,1/+0,25 ATR), invalidasi di luar ujung sapuan, target alami sisi lain range (harus ≥ jarak TP1). SL/TP tetap mengikuti rencana per TF. Gate struktur standar (tidak melawan bias utama). Belum disimulasikan di backtest (versi backtest 12 bulan sedang berjalan).
@@ -91,11 +91,13 @@ Setup gagal gate disimpan sebagai **Invalid / Tidak layak** dengan alasan, tanpa
 
 | Komponen | Bobot | Penilaian |
 |---|---|---|
-| Keselarasan tren | 25 | H4&H1 searah 25 · H1 searah 18 · bias ranging 8 · berlawanan 0 |
+| Keselarasan tren | 25 | H1&M30 searah 25 · M30 searah (H1 ranging) 18 · bias ranging 8 · berlawanan 0; **+5 bila H4 searah** (maks 25, sejak 20 Okt 2026) |
 | Struktur & level | 25 | invalidasi jelas 10 + sentuhan level (1:3, 2:7, ≥3:10) + tidak ada level lawan sebelum TP1 5 |
 | Konfirmasi candle | 20 | candle konfirmasi tertutup 20 |
 | Momentum RSI 14 | 15 | BUY: RSI 45–68 → 10 (40–45 → 5), naik +5, > 75 → 0. SELL simetris |
 | Volatilitas & biaya | 15 | SL 1–3 ATR konteks 8 (0,75–1: 4) + spread ≤ 10% SL 7 (≤ 20%: 3) |
+
+**H4 = TF info** (`infoTf`, sejak 20 Okt 2026): dianalisis untuk ditampilkan dan bonus skor saja — bukan filter, tidak ikut cek kualitas data, dan tidak pernah menurunkan skor, jadi jumlah sinyal tidak berkurang. Tidak dipakai di backtest (hash versi tetap).
 
 Engine menyimpan setup dengan skor ≥ 40; minimum skor tampilan/notifikasi per TF default 60 (M15, H1) dan dapat diatur pengguna. Skor 80/100 **tidak** berarti 80% peluang menang.
 

@@ -19,6 +19,9 @@ export interface ScoreInput {
   direction: Direction;
   mainBias: MarketBias;
   strongBias: boolean;
+  /** bias TF info (H4): hanya MENAMBAH poin tren bila searah, tidak pernah mengurangi */
+  infoBias?: MarketBias;
+  infoTf?: string;
   /** jumlah sentuhan level acuan (support/resistance/area) */
   levelTouches: number;
   hasStructuralInvalidation: boolean;
@@ -44,13 +47,18 @@ export function scoreSetup(i: ScoreInput): ScoreBreakdown {
   let trendNote = "Bias utama tidak searah";
   if (i.mainBias === dirBias && i.strongBias) {
     trend = 25;
-    trendNote = "H4 & H1 searah dengan setup";
+    trendNote = "H1 & M30 searah dengan setup";
   } else if (i.mainBias === dirBias) {
     trend = 18;
-    trendNote = "H1 searah, H4 netral";
+    trendNote = "M30 searah, H1 netral";
   } else if (i.mainBias === "ranging") {
     trend = 8;
     trendNote = "Bias utama ranging";
+  }
+  // bonus TF info (H4): +5 bila searah, maks 25 — skor tidak pernah turun karena H4
+  if (i.infoBias === dirBias) {
+    trend = Math.min(SCORE_WEIGHTS.trend, trend + 5);
+    trendNote += `; ${i.infoTf ?? "H4"} juga searah`;
   }
 
   let structure = i.hasStructuralInvalidation ? 10 : 0;

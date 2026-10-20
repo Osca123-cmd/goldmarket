@@ -207,15 +207,19 @@ function LiveSignal() {
           <p className="mt-1 max-w-prose text-sm text-muted">{sub}</p>
           {analysis && (
             <p className="mt-3 text-sm text-ink/85">
-              {(["H1", "M30", "M15"] as const).map((tf, i) => {
-                const t = TREND[analysis.timeframes[tf]?.bias ?? ""] ?? { word: "belum ada data", cls: "text-muted" };
-                return (
-                  <span key={tf}>
-                    {i > 0 && ", "}
-                    {tf} <span className={cx("font-semibold", t.cls)}>{t.word}</span>
-                  </span>
-                );
-              })}
+              {/* H4 hanya info & bonus skor, bukan filter sinyal */}
+              {(["H4", "H1", "M30", "M15"] as const)
+                .filter((tf) => tf !== "H4" || analysis.timeframes.H4)
+                .map((tf, i) => {
+                  const t = TREND[analysis.timeframes[tf]?.bias ?? ""] ?? { word: "belum ada data", cls: "text-muted" };
+                  return (
+                    <span key={tf}>
+                      {i > 0 && ", "}
+                      {tf} <span className={cx("font-semibold", t.cls)}>{t.word}</span>
+                      {tf === "H4" && <span className="text-xs text-muted"> (info)</span>}
+                    </span>
+                  );
+                })}
               .
             </p>
           )}
