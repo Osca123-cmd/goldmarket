@@ -50,6 +50,8 @@ export interface DetectContext {
   config: EngineConfig;
 }
 
+/** jarak invalidasi (× ATR konteks) per strategi dari config, atau nilai asli detektor */
+const invAtr = (c: DetectContext, id: StrategyId, fallback: number) => c.config.invalidationAtr?.[id] ?? fallback;
 const sgn = (d: Direction) => (d === "BUY" ? 1 : -1);
 const dirBias = (d: Direction): MarketBias => (d === "BUY" ? "bullish" : "bearish");
 const opposite = (b: MarketBias, d: Direction) => b === (d === "BUY" ? "bearish" : "bullish");
@@ -290,14 +292,19 @@ export function detectTrendPullback(direction: Direction, pair: TfPair, c: Detec
 
   const swingsOpp = ctx.swings.filter((sw) => sw.kind === (direction === "BUY" ? "low" : "high")).reverse();
   const invSwing = swingsOpp.find((sw) => (direction === "BUY" ? sw.price < lo && sw.price > lo - 3 * a : sw.price > hi && sw.price < hi + 3 * a));
-  const invalidation = invSwing ? invSwing.price - s * 0.1 * a : null;
+  const zoneInv = c.config.invalidationAtr?.trend_pullback;
+  const invalidation = zoneInv != null ? (direction === "BUY" ? lo : hi) - s * zoneInv * a : invSwing ? invSwing.price - s * 0.1 * a : null;
   if (invalidation != null && s * (c.price - invalidation) <= 0) return null;
 
   const reasons = [
     ...c.analysis.reasons,
     `${pair.context}: EMA20 ${direction === "BUY" ? "di atas" : "di bawah"} EMA50; harga retracement dari ${direction === "BUY" ? "swing high" : "swing low"} ${impulse.price.toFixed(2)}.`,
     `Area pullback ${lo.toFixed(2)}–${hi.toFixed(2)} (EMA20/EMA50${lvl ? ` + ${levelKind} ${lvl.price.toFixed(2)} (${lvl.touches}×)` : ""}).`,
-    invSwing ? `Invalidasi di luar swing ${invSwing.price.toFixed(2)}.` : "Tidak ditemukan swing untuk invalidasi.",
+    zoneInv != null
+      ? `Invalidasi bila harga menembus area EMA sejauh ${zoneInv} ATR (${invalidation!.toFixed(2)}).`
+      : invSwing
+        ? `Invalidasi di luar swing ${invSwing.price.toFixed(2)}.`
+        : "Tidak ditemukan swing untuk invalidasi.",
   ];
   return finalize(
     {
@@ -349,7 +356,7 @@ export function detectBreakoutRetest(direction: Direction, pair: TfPair, c: Dete
     const zoneHigh = direction === "BUY" ? L.price + 0.25 * a : L.price + 0.15 * a;
     const edge = direction === "BUY" ? zoneHigh : zoneLow;
     if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
-    const invalidation = L.price - s * 0.6 * a;
+    const invalidation = L.price - s * invAtr(c, "breakout_retest", 0.6) * a;
     if (s * (c.price - invalidation) <= 0) return null;
     const reasons = [
       ...c.analysis.reasons,
@@ -465,7 +472,7 @@ export function detectSdReversal(direction: Direction, pair: TfPair, c: DetectCo
   const zoneHigh = direction === "BUY" ? L.price + 0.25 * a : L.price + 0.1 * a;
   const edge = direction === "BUY" ? zoneHigh : zoneLow;
   if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
-  const invalidation = L.price - s * 0.35 * a;
+  const invalidation = L.price - s * invAtr(c, "sd_reversal", 0.35) * a;
   if (s * (c.price - invalidation) <= 0) return null;
   const reasons = [
     ...c.analysis.reasons,
@@ -611,7 +618,7 @@ export function detectMsnrFlip(direction: Direction, pair: TfPair, c: DetectCont
   const zoneHigh = direction === "BUY" ? L + 0.2 * a : L + 0.15 * a;
   const edge = direction === "BUY" ? zoneHigh : zoneLow;
   if (s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
-  const invalidation = L - s * 0.5 * a;
+  const invalidation = L - s * invAtr(c, "msnr_flip", 0.5) * a;
   if (s * (c.price - invalidation) <= 0) return null;
   const brk = cs[f.breakIndex];
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
@@ -755,7 +762,8 @@ export function detectOrderBlock(direction: Direction, pair: TfPair, c: DetectCo
   const edge = direction === "BUY" ? f.zoneHigh : f.zoneLow;
   // harga harus masih di luar zona (menunggu retest pertama) dan tidak terlalu jauh
   if (s * (c.price - edge) <= 0 || s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
-  const invalidation = direction === "BUY" ? f.zoneLow - 0.1 * a : f.zoneHigh + 0.1 * a;
+  const obInv = invAtr(c, "order_block", 0.1);
+  const invalidation = direction === "BUY" ? f.zoneLow - obInv * a : f.zoneHigh + obInv * a;
   const ob = cs[f.obIndex];
   const bos = cs[f.bosIndex];
   const majorBias = c.analysis.tfs[major]?.bias;
@@ -885,6 +893,7 @@ function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): Setup
     for (const dir of ["BUY", "SELL"] as Direction[]) {
       for (const [id, detect] of DETECTORS) {
         if (!c.config.strategies.includes(id) || !only(id)) continue;
+        if (c.config.contexts?.[id] && !c.config.contexts[id]!.includes(pair.context)) continue;
         const x = detect(dir, pair, id === "sd_reversal" ? sdCtx : c);
         if (x) out.push(x);
       }
@@ -922,13 +931,17 @@ export function detectAll(c: DetectContext): SetupCandidate[] {
       out.push(x);
     }
   }
-  // momentum TF kecil menentukan arah: kandidat yang berlawanan tidak dibuat (bisa muncul lagi saat momentum searah)
+  // momentum TF kecil menentukan arah: kandidat yang berlawanan tidak dibuat (bisa muncul lagi saat momentum searah);
+  // strategi di `skip` (pembalikan: masuk justru saat momentum kecil berlawanan) tidak disaring
   if (rule?.momentum) {
-    const m = momentumDirection(c.candles[rule.momentum.tf] ?? [], rule.momentum.fast, rule.momentum.slow);
+    const mom = rule.momentum;
+    const m = momentumDirection(c.candles[mom.tf] ?? [], mom.fast, mom.slow);
     if (m) {
-      out = out.filter((x) => x.direction === m.direction);
-      const note = `Momentum ${rule.momentum.tf} ${m.direction === "BUY" ? "naik" : "turun"}: EMA${rule.momentum.fast} ${m.fast.toFixed(2)} ${m.direction === "BUY" ? ">" : "<"} EMA${rule.momentum.slow} ${m.slow.toFixed(2)} → hanya ${m.direction}.`;
-      for (const x of out) x.reasons.push(note);
+      const skip = mom.skip ?? [];
+      out = out.filter((x) => x.direction === m.direction || skip.includes(x.strategy));
+      const note = `Momentum ${mom.tf} ${m.direction === "BUY" ? "naik" : "turun"}: EMA${mom.fast} ${m.fast.toFixed(2)} ${m.direction === "BUY" ? ">" : "<"} EMA${mom.slow} ${m.slow.toFixed(2)} → hanya ${m.direction}.`;
+      for (const x of out)
+        x.reasons.push(x.direction === m.direction ? note : `Momentum ${mom.tf} berlawanan, tetapi strategi pembalikan ini tidak disaring momentum.`);
     }
   }
   return out.filter((x) => x.score.total >= c.config.engineMinScore);

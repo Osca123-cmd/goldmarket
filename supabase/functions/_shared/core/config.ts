@@ -68,7 +68,15 @@ export interface EngineConfig {
    * Uji candle nyata 30 Agu–19 Okt (4 strategi live): 419 trade +6.833 (+16,3/sinyal, drawdown 854) →
    * 284 trade +7.528 (+26,5/sinyal, win 58%, drawdown 523), lebih baik di kedua paruh periode.
    */
-  direction?: { twoWay: StrategyId[]; momentum?: { tf: Timeframe; fast: number; slow: number } };
+  direction?: { twoWay: StrategyId[]; momentum?: { tf: Timeframe; fast: number; slow: number; skip?: StrategyId[] } };
+  /**
+   * Jarak invalidasi dari level/zona per strategi (× ATR konteks). Tidak diisi = nilai asli detektor
+   * (breakout 0,6 · S&D 0,35 · MSNR 0,5 · Order Block 0,1 · Trend pullback = swing lawan terdekat).
+   * Trend pullback: bila diisi, invalidasi = tepi jauh area EMA ∓ nilai ini (area EMA tembus = ide pullback batal).
+   */
+  invalidationAtr?: Partial<Record<StrategyId, number>>;
+  /** TF konteks yang dipakai per strategi (tidak diisi = semua pasangan `pairs`) */
+  contexts?: Partial<Record<StrategyId, Timeframe[]>>;
   /** aturan PENGIRIMAN sinyal live (bukan deteksi; tidak memengaruhi backtest). Tidak diisi = nonaktif. */
   delivery?: DeliveryRules;
 }
@@ -136,7 +144,16 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   invalidationTolPips: 0,
   limitDepth: { fvg_retest: 1 },
   chopRanging: { bars: 4, maxAtr: 2, tf: "H1" },
-  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout"], momentum: { tf: "M15", fast: 8, slow: 21 } },
+  // 21 Okt 2026 (optimasi per strategi, candle XAU/USD Twelve Data 4 Mei–21 Okt, semua sinyal tanpa aturan 1-sinyal):
+  // S&D reversal masuk justru saat momentum M15 berlawanan (pantulan) → tidak disaring momentum:
+  // S&D 20,6 → 30,0 sinyal/minggu, +19,9 → +27,9 pips/sinyal, lebih baik di kedua paruh.
+  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout"], momentum: { tf: "M15", fast: 8, slow: 21, skip: ["sd_reversal"] } },
+  // invalidasi lebih dekat ke level agar SL tetap rencana TF tidak gagal gate "SL vs invalidasi" (sumber utama setup terbuang):
+  //  - breakout_retest 0,6 → 0,4: 7,8 → 17,7 sinyal/minggu, +2.960 → +4.110 pips (0,3 dan 0,5 juga lebih baik dari 0,6);
+  //  - trend_pullback: swing lawan (≤ 3 ATR, hampir selalu di luar SL) → tepi area EMA ∓ 0,2 ATR: 0,2 → 1,6 sinyal/minggu, +39/sinyal;
+  //  - sd_reversal 0,35 → 0,25: pips/sinyal naik, drawdown turun, lebih baik di kedua paruh.
+  // Ditolak (lebih jelek di XAU/USD): momentum bebas untuk CRT & Liquidity sweep, MSNR 0,35, FVG entry tengah/tepi dekat, Liquidity sweep hanya M15.
+  invalidationAtr: { breakout_retest: 0.4, trend_pullback: 0.2, sd_reversal: 0.25 },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {
@@ -156,6 +173,7 @@ export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): 
     biasTfs: { ...DEFAULT_ENGINE_CONFIG.biasTfs, ...(partial.biasTfs ?? {}) },
     expiryBars: { ...DEFAULT_ENGINE_CONFIG.expiryBars, ...(partial.expiryBars ?? {}) },
     minScoreByTf: { ...DEFAULT_ENGINE_CONFIG.minScoreByTf, ...(partial.minScoreByTf ?? {}) },
+    invalidationAtr: { ...DEFAULT_ENGINE_CONFIG.invalidationAtr, ...(partial.invalidationAtr ?? {}) },
   };
 }
 

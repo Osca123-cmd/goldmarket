@@ -17,7 +17,7 @@ describe("arah dari setup & momentum, bukan dipaksa tren besar", () => {
     expect(momentumDirection(bars([4100, 4101]), 8, 21)).toBeNull();
   });
 
-  it("detectAll (config live) di data demo: arah selalu searah momentum M15; melawan bias utama tetap lolos gate struktur", () => {
+  it("detectAll (config live) di data demo: arah searah momentum M15 kecuali S&D (skip); melawan bias utama tetap lolos gate struktur", () => {
     const cfg = mergeConfig({ strategies: ["sd_reversal", "crt", "fvg_retest", "order_block"], minSlAtrContext: 0.6, invalidationTolPips: 5 });
     let found = 0;
     for (let t = Date.parse("2026-07-01T00:00:00Z") / 1000; t < Date.parse("2026-07-08T00:00:00Z") / 1000; t += 1800) {
@@ -27,7 +27,7 @@ describe("arah dari setup & momentum, bukan dipaksa tren besar", () => {
       const analysis = analyzeMarket({ nowSec: t, candles: closed }, analysisTfs(cfg), cfg.biasTfs);
       const m = momentumDirection(closed.M15 ?? [], 8, 21);
       for (const c of detectAll({ analysis, candles: closed, price: demoPrice(t / 60), spreadPips: 3, nowSec: t, dataTime: t, config: cfg })) {
-        expect(c.direction).toBe(m!.direction);
+        if (c.strategy !== "sd_reversal") expect(c.direction).toBe(m!.direction);
         expect(c.reasons.some((r) => r.startsWith("Momentum M15"))).toBe(true);
         if (c.strategy !== "sd_reversal" && analysis.mainBias === (c.direction === "BUY" ? "bearish" : "bullish"))
           expect(c.gates.find((g) => g.key === "structure")?.pass).toBe(true);
@@ -36,6 +36,36 @@ describe("arah dari setup & momentum, bukan dipaksa tren besar", () => {
     }
     expect(found).toBeGreaterThan(0);
   }, 180000);
+
+  it("momentum.skip: strategi pembalikan tidak disaring momentum, strategi lain tetap", () => {
+    const run = (skip: string[] | undefined) => {
+      const base = mergeConfig({ strategies: ["sd_reversal", "fvg_retest"] });
+      const cfg = { ...base, direction: { ...base.direction!, momentum: { tf: "M15" as const, fast: 8, slow: 21, skip: skip as never } } };
+      const out: { strategy: string; against: boolean }[] = [];
+      for (let t = Date.parse("2026-07-01T00:00:00Z") / 1000; t < Date.parse("2026-07-04T00:00:00Z") / 1000; t += 3600) {
+        const raw = demoView(t);
+        const closed: Partial<Record<Timeframe, Candle[]>> = {};
+        for (const tf of Object.keys(raw) as Timeframe[]) closed[tf] = closedAsOf(raw[tf] ?? [], tf, t);
+        const analysis = analyzeMarket({ nowSec: t, candles: closed }, analysisTfs(cfg), cfg.biasTfs);
+        const m = momentumDirection(closed.M15 ?? [], 8, 21)!;
+        for (const c of detectAll({ analysis, candles: closed, price: demoPrice(t / 60), spreadPips: 3, nowSec: t, dataTime: t, config: cfg }))
+          out.push({ strategy: c.strategy, against: c.direction !== m.direction });
+      }
+      return out;
+    };
+    expect(run([]).some((x) => x.against)).toBe(false);
+    const skipped = run(["sd_reversal"]);
+    expect(skipped.filter((x) => x.against).every((x) => x.strategy === "sd_reversal")).toBe(true);
+    expect(skipped.some((x) => x.against)).toBe(true);
+  }, 180000);
+
+  it("config default: S&D dikecualikan dari momentum; invalidasi per strategi terisi", () => {
+    const cfg = mergeConfig({ strategies: ["sd_reversal"] });
+    expect(cfg.direction?.momentum?.skip).toEqual(["sd_reversal"]);
+    expect(cfg.invalidationAtr).toMatchObject({ breakout_retest: 0.4, trend_pullback: 0.2, sd_reversal: 0.25 });
+    // override sebagian lewat engine_state.config tidak menghapus nilai lain
+    expect(mergeConfig({ invalidationAtr: { breakout_retest: 0.5 } }).invalidationAtr).toMatchObject({ breakout_retest: 0.5, sd_reversal: 0.25 });
+  });
 
   it("tanpa config.direction (backtest riset): tidak ada filter momentum", () => {
     const cfg = mergeConfig({ strategies: ["fvg_retest"], direction: undefined });
