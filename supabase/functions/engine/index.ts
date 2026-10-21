@@ -1002,6 +1002,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     chopRanging: undefined,
     // arah dari setup & momentum, khusus live; undefined → hash riset tidak berubah
     direction: undefined,
+    // susunan TF riset dipatok (live pindah ke bias H4 sejak 21 Okt) supaya simulasi & hash tidak berubah
+    biasTfs: { major: "H1", minor: "M30" },
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);

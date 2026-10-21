@@ -215,6 +215,8 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
     strongBias: c.analysis.strongBias,
     infoBias: c.config.infoTf ? c.analysis.tfs[c.config.infoTf]?.bias : undefined,
     infoTf: c.config.infoTf,
+    majorTf: c.config.biasTfs.major,
+    minorTf: c.config.biasTfs.minor,
     levelTouches: d.levelTouches,
     hasStructuralInvalidation: d.invalidation != null,
     roomToTp1: !opposing || opposing.length === 0,
@@ -791,13 +793,15 @@ export function detectOrderBlock(direction: Direction, pair: TfPair, c: DetectCo
  */
 export function detectChopBreakout(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
   if (pair.context !== "M30") return null;
-  const major = c.config.biasTfs.major;
-  const m = c.analysis.tfs[major];
+  const rule = c.config.chopRanging ?? { bars: 4, maxAtr: 2 };
+  const boxTf = rule.tf ?? c.config.biasTfs.major;
+  const m = c.analysis.tfs[boxTf];
   const ctx = c.analysis.tfs[pair.context];
-  const conf = c.analysis.tfs[pair.confirm];
-  const bars = c.candles[pair.confirm] ?? [];
+  // candle tembusan selalu M15 (seperti yang diuji), terlepas dari TF konfirmasi pasangan
+  const conf = c.analysis.tfs.M15;
+  const bars = c.candles.M15 ?? [];
   if (!m || !ctx || !conf || bars.length < 3) return null;
-  const box = isBoxed(c.candles[major] ?? [], m.atr, c.config.chopRanging ?? { bars: 4, maxAtr: 2 });
+  const box = isBoxed(c.candles[boxTf] ?? [], m.atr, rule);
   if (!box) return null;
   const s = sgn(direction);
   const a = conf.atr;
@@ -812,7 +816,7 @@ export function detectChopBreakout(direction: Direction, pair: TfPair, c: Detect
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const reasons = [
     ...c.analysis.reasons,
-    `Breakout kandang babi: ${c.config.chopRanging?.bars ?? 4} candle ${major} terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)}; candle ${pair.confirm} ${hhmm(b.time)} UTC close ${b.close.toFixed(2)} ${direction === "BUY" ? "menembus ke atas" : "menembus ke bawah"} dengan badan ${(s * (b.close - b.open) / a).toFixed(2)} ATR.`,
+    `Breakout kandang babi: ${rule.bars} candle ${boxTf} terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)}; candle M15 ${hhmm(b.time)} UTC close ${b.close.toFixed(2)} ${direction === "BUY" ? "menembus ke atas" : "menembus ke bawah"} dengan badan ${(s * (b.close - b.open) / a).toFixed(2)} ATR.`,
     `Entry limit retest tepi kotak ${edge.toFixed(2)}; invalidasi bila harga masuk lagi ke ${invalidation.toFixed(2)}.`,
   ];
   return finalize(
@@ -827,8 +831,8 @@ export function detectChopBreakout(direction: Direction, pair: TfPair, c: Detect
       invalidation,
       levelTouches: 2,
       anchor: `box:${box.low.toFixed(2)}-${box.high.toFixed(2)}`,
-      confirmCandles: bars,
-      confirmAfter: b.time + TF_SECONDS[pair.confirm],
+      confirmCandles: c.candles[pair.confirm] ?? bars,
+      confirmAfter: b.time + TF_SECONDS.M15,
       reasons,
     },
     c,
@@ -850,9 +854,12 @@ export function chopRangingContext(c: DetectContext): DetectContext | null {
   const major = c.config.biasTfs.major;
   const m = c.analysis.tfs[major];
   if (!rule || !m || m.bias === "ranging") return null;
-  const box = isBoxed(c.candles[major] ?? [], m.atr, rule);
+  const boxTf = rule.tf ?? major;
+  const bt = c.analysis.tfs[boxTf];
+  if (!bt) return null;
+  const box = isBoxed(c.candles[boxTf] ?? [], bt.atr, rule);
   if (!box) return null;
-  const note = `${major} ${m.bias} tetapi ${rule.bars} candle terakhir terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)} (≤ ${rule.maxAtr} ATR, "kandang babi") → diperlakukan ranging untuk Supply/Demand reversal.`;
+  const note = `${major} ${m.bias} tetapi ${rule.bars} candle ${boxTf} terakhir terkurung ${box.low.toFixed(2)}–${box.high.toFixed(2)} (≤ ${rule.maxAtr} ATR, "kandang babi") → diperlakukan ranging untuk Supply/Demand reversal.`;
   return {
     ...c,
     analysis: { ...c.analysis, mainBias: "ranging", tfs: { ...c.analysis.tfs, [major]: { ...m, bias: "ranging" } }, reasons: [...c.analysis.reasons, note] },

@@ -18,7 +18,7 @@ describe("kandang babi: harga H1 terkurung di kotak sempit", () => {
   });
 
   const ctx = (bias: "bearish" | "ranging", bars: Candle[], withRule = true): DetectContext => ({
-    analysis: { asOf: 0, mainBias: bias, strongBias: true, reasons: ["Bias utama bearish: H1 dan M30 searah."], tfs: { H1: { bias, atr: 12 } } } as never,
+    analysis: { asOf: 0, mainBias: bias, strongBias: true, reasons: ["Bias utama bearish: H1 dan M30 searah."], tfs: { H4: { bias, atr: 30 }, H1: { bias, atr: 12 } } } as never,
     candles: { H1: bars },
     price: 4120,
     spreadPips: 3,
@@ -28,9 +28,9 @@ describe("kandang babi: harga H1 terkurung di kotak sempit", () => {
   });
   const boxed = [h1(0, 4127, 4112), h1(1, 4126, 4113), h1(2, 4126, 4114), h1(3, 4125, 4115)];
 
-  it("H1 turun tetapi terkurung → konteks S&D memperlakukan H1 & bias utama ranging, dengan alasan", () => {
+  it("H4 turun tetapi 4 candle H1 terkurung → konteks S&D memperlakukan H4 (TF bias besar) & bias utama ranging, dengan alasan", () => {
     const x = chopRangingContext(ctx("bearish", boxed))!;
-    expect(x.analysis.tfs.H1?.bias).toBe("ranging");
+    expect(x.analysis.tfs.H4?.bias).toBe("ranging");
     expect(x.analysis.mainBias).toBe("ranging");
     expect(x.analysis.reasons.at(-1)).toMatch(/kandang babi/);
   });
@@ -50,5 +50,16 @@ describe("kandang babi: harga H1 terkurung di kotak sempit", () => {
     expect(evaluateStatus(s, { nowSec: 1_000_700, price: 3004, confirmCandles: [], mainBias: "bearish", dataOk: true }).status).toBe("approaching");
     const broke = [{ time: 1_000_500, open: 3002, high: 3002, low: 2994, close: 2995 }];
     expect(evaluateStatus(s, { nowSec: 1_000_900, price: 2995, confirmCandles: broke, mainBias: "bearish", dataOk: true }).status).toBe("invalid");
+  });
+});
+
+describe("susunan timeframe live (21 Okt 2026)", () => {
+  it("bias H4 + M30, setup M15 & M30 dengan konfirmasi M15, kotak kandang babi di H1, tanpa TF info", async () => {
+    const { analysisTfs, DEFAULT_ENGINE_CONFIG: d } = await import("../src/core/config.ts");
+    expect(d.biasTfs).toEqual({ major: "H4", minor: "M30" });
+    expect(d.pairs).toEqual([{ context: "M15", confirm: "M15" }, { context: "M30", confirm: "M15" }]);
+    expect(d.infoTf).toBeUndefined();
+    expect(d.chopRanging?.tf).toBe("H1");
+    expect(analysisTfs(d).sort()).toEqual(["H1", "H4", "M15", "M30"]);
   });
 });

@@ -59,7 +59,8 @@ export interface EngineConfig {
    * 30 Agu–19 Okt, 4 strategi live): 332 trade +4.494 (+13,5/sinyal) → 422 trade +6.534 (+15,5/sinyal),
    * lebih baik di kedua paruh periode. Memblokir strategi ikut-tren di dalam kotak tidak membantu.
    */
-  chopRanging?: { bars: number; maxAtr: number };
+  /** tf = TF kotak (default TF bias besar); dipatok H1 sejak bias besar pindah ke H4 (21 Okt) karena kotak diuji di H1 */
+  chopRanging?: { bars: number; maxAtr: number; tf?: Timeframe };
   /**
    * Arah sinyal dari setup & momentum, bukan dipaksa tren besar (permintaan pengguna 20 Okt 2026 malam):
    *  - twoWay: strategi yang juga dicari melawan bias utama dan tidak dibatalkan saat bias berbalik;
@@ -112,9 +113,11 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
     H1: { slPips: 100, tp1Pips: 100, tp2Pips: 200, tp3Pips: 300 },
   },
   thresholds: DEFAULT_THRESHOLDS,
-  // hanya M15, M30, H1 (permintaan pengguna 19 Okt 2026): bias H1+M30, setup M15 & M30, konfirmasi candle M15
-  biasTfs: { major: "H1", minor: "M30" },
-  infoTf: "H4",
+  // 21 Okt 2026 (permintaan pengguna): bias H4+M30, setup M15 & M30, konfirmasi candle M15; H1 hanya untuk kotak "kandang babi".
+  // Uji 1–19 Okt (9 strategi): H1/M30 244 trade +4.738 (+19,4/sinyal) vs H4/M30 236 trade +4.432 (+18,8/sinyal).
+  biasTfs: { major: "H4", minor: "M30" },
+  // H4 sudah jadi tren utama → tidak ada TF info terpisah
+  infoTf: undefined,
   pairs: [
     { context: "M15", confirm: "M15" },
     { context: "M30", confirm: "M15" },
@@ -132,7 +135,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   newsBlackoutMin: 30,
   invalidationTolPips: 0,
   limitDepth: { fvg_retest: 1 },
-  chopRanging: { bars: 4, maxAtr: 2 },
+  chopRanging: { bars: 4, maxAtr: 2, tf: "H1" },
   direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout"], momentum: { tf: "M15", fast: 8, slow: 21 } },
 };
 
@@ -157,8 +160,9 @@ export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): 
 }
 
 /** Semua TF yang dianalisis: bias (major, minor) + konteks & konfirmasi tiap pasangan. */
-export function analysisTfs(cfg: Pick<EngineConfig, "biasTfs" | "pairs">): Timeframe[] {
-  return [...new Set([cfg.biasTfs.major, cfg.biasTfs.minor, ...cfg.pairs.flatMap((p) => [p.context, p.confirm])])];
+export function analysisTfs(cfg: Pick<EngineConfig, "biasTfs" | "pairs"> & Partial<Pick<EngineConfig, "chopRanging">>): Timeframe[] {
+  const box = cfg.chopRanging?.tf ? [cfg.chopRanging.tf] : [];
+  return [...new Set([cfg.biasTfs.major, cfg.biasTfs.minor, ...cfg.pairs.flatMap((p) => [p.context, p.confirm]), ...box])];
 }
 
 /** Rencana SL/TP untuk timeframe konteks tertentu. */

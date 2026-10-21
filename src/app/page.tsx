@@ -194,11 +194,11 @@ function Dashboard() {
                 {ANALYSIS_STATUS_LABEL[analysis.status]}
               </div>
               <div className="mt-2 text-sm text-muted">
-                Bias utama (H1+M30): <span className={cx("font-semibold", BIAS_TONE[analysis.main_bias])}>{analysis.main_bias}</span>
+                Bias utama (H4+M30): <span className={cx("font-semibold", BIAS_TONE[analysis.main_bias])}>{analysis.main_bias}</span>
                 {analysis.strong_bias && " · kuat"}
               </div>
               <div className="mt-3 grid grid-cols-3 gap-1.5">
-                {(["H1", "M30", "M15"] as const).map((tf) => {
+                {(["H4", "M30", "M15"] as const).map((tf) => {
                   const b = analysis.timeframes[tf]?.bias ?? null;
                   return (
                     <div key={tf} className={cx("rounded-lg border px-2 py-1.5 text-center", b ? BIAS_PILL[b] : "border-line text-muted")}>
@@ -230,14 +230,14 @@ function Dashboard() {
         <section className="min-w-0">
           <h2 className="card-title mb-2">Ringkasan multi-timeframe</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {(["H1", "M30", "M15"] as const).map((tf) => {
+            {(["H4", "M30", "M15"] as const).map((tf) => {
               const a = analysis.timeframes[tf];
               if (!a) return null;
               return (
                 <div key={tf} className="card fade-in min-w-0 !p-4">
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-extrabold tracking-wide">{tf}</span>
-                    <span className="mr-auto text-[11px] text-muted">{tf === "H1" ? "Bias tren" : tf === "M30" ? "Bias & setup" : "Setup & konfirmasi"}</span>
+                    <span className="mr-auto text-[11px] text-muted">{tf === "H4" ? "Bias tren" : tf === "M30" ? "Bias & setup" : "Setup & konfirmasi"}</span>
                     <span className={cx("chip font-semibold", BIAS_PILL[a.bias])}>{a.bias}</span>
                   </div>
                   <p className="mt-1 truncate text-xs text-muted" title={a.structure}>

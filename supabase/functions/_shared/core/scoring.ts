@@ -22,6 +22,9 @@ export interface ScoreInput {
   /** bias TF info (H4): hanya MENAMBAH poin tren bila searah, tidak pernah mengurangi */
   infoBias?: MarketBias;
   infoTf?: string;
+  /** nama TF bias besar & kecil untuk catatan skor (default H1/M30) */
+  majorTf?: string;
+  minorTf?: string;
   /** jumlah sentuhan level acuan (support/resistance/area) */
   levelTouches: number;
   hasStructuralInvalidation: boolean;
@@ -47,10 +50,10 @@ export function scoreSetup(i: ScoreInput): ScoreBreakdown {
   let trendNote = "Bias utama tidak searah";
   if (i.mainBias === dirBias && i.strongBias) {
     trend = 25;
-    trendNote = "H1 & M30 searah dengan setup";
+    trendNote = `${i.majorTf ?? "H1"} & ${i.minorTf ?? "M30"} searah dengan setup`;
   } else if (i.mainBias === dirBias) {
     trend = 18;
-    trendNote = "M30 searah, H1 netral";
+    trendNote = `${i.minorTf ?? "M30"} searah, ${i.majorTf ?? "H1"} netral`;
   } else if (i.mainBias === "ranging") {
     trend = 8;
     trendNote = "Bias utama ranging";

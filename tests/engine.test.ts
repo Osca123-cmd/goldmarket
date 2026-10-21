@@ -8,7 +8,7 @@ import { sliceClosed } from "../src/core/backtest.ts";
 import type { StoredSetup } from "../src/core/setups.ts";
 import { invalidationGate, type SetupCandidate } from "../src/core/strategies.ts";
 import type { Timeframe } from "../src/core/types.ts";
-import { demoSeries, demoView } from "./helpers.ts";
+import { LEGACY_TF, demoSeries, demoView } from "./helpers.ts";
 
 const T0 = Date.parse("2026-07-14T10:00:00Z") / 1000;
 
@@ -23,7 +23,7 @@ function input(t: number, over: Partial<EngineInput> = {}): EngineInput {
     feedStatus: "live",
     previousFeedStatus: "live",
     existing: [],
-    config: DEFAULT_ENGINE_CONFIG,
+    config: { ...DEFAULT_ENGINE_CONFIG, ...LEGACY_TF },
     ...over,
   };
 }
@@ -173,14 +173,14 @@ describe("blackout news FOMC/NFP/CPI/PPI", () => {
     expect(held.created).toHaveLength(0);
     expect(held.blackoutReason).toMatch(/CPI m\/m dalam 10 menit/);
     expect(held.rejected.length).toBeGreaterThanOrEqual(normal.created.length);
-    const off = runEngineCycle(input(T0, { newsBlackout: { title: "CPI m/m", timeSec: T0 }, config: { ...DEFAULT_ENGINE_CONFIG, newsBlackoutMin: 0 } }));
+    const off = runEngineCycle(input(T0, { newsBlackout: { title: "CPI m/m", timeSec: T0 }, config: { ...DEFAULT_ENGINE_CONFIG, ...LEGACY_TF, newsBlackoutMin: 0 } }));
     expect(off.created.length).toBe(normal.created.length);
   });
 });
 
 describe("strategi liquidity sweep (riset)", () => {
   it("terdeteksi pada data demo dengan invalidasi di luar ujung sweep dan level sesuai rencana TF", () => {
-    const cfg = { ...DEFAULT_ENGINE_CONFIG, strategies: ["liquidity_sweep" as const] };
+    const cfg = { ...DEFAULT_ENGINE_CONFIG, ...LEGACY_TF, strategies: ["liquidity_sweep" as const] };
     const found: SetupCandidate[] = [];
     for (let t = T0; t < T0 + 5 * 86400 && found.length < 3; t += 900) {
       found.push(...runEngineCycle(input(t, { config: cfg })).created.filter((c) => c.strategy === "liquidity_sweep"));
@@ -221,11 +221,11 @@ describe("gate SL vs invalidasi + toleransi", () => {
 
 describe("strategi supply/demand reversal (riset)", () => {
   it("hanya muncul saat TF bias besar (H1) ranging; boleh melawan bias M30; invalidasi di sisi SL; level sesuai rencana TF", () => {
-    const cfg = { ...DEFAULT_ENGINE_CONFIG, strategies: ["sd_reversal" as const] };
+    const cfg = { ...DEFAULT_ENGINE_CONFIG, ...LEGACY_TF, strategies: ["sd_reversal" as const] };
     const found: { c: SetupCandidate; h4: string }[] = [];
     for (let t = T0; t < T0 + 10 * 86400 && found.length < 5; t += 900) {
       const out = runEngineCycle(input(t, { config: cfg }));
-      for (const c of out.created) found.push({ c, h4: out.analysis.tfs[DEFAULT_ENGINE_CONFIG.biasTfs.major]?.bias ?? "" });
+      for (const c of out.created) found.push({ c, h4: out.analysis.tfs[LEGACY_TF.biasTfs.major]?.bias ?? "" });
     }
     expect(found.length).toBeGreaterThan(0);
     for (const { c, h4 } of found) {

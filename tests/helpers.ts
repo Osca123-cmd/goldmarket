@@ -22,3 +22,6 @@ export function demoView(endSec: number) {
     M5: demoSeries("M5", endSec, 300),
   } as Partial<Record<Timeframe, Candle[]>>;
 }
+
+/** susunan TF lama (bias H1+M30, info H4, kotak di TF bias) untuk tes pipeline yang dirancang di atas data demo itu */
+export const LEGACY_TF = { biasTfs: { major: "H1", minor: "M30" }, infoTf: "H4", chopRanging: { bars: 4, maxAtr: 2 } } as const;

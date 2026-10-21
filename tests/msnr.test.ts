@@ -6,7 +6,7 @@ import { analysisTfs, mergeConfig } from "../src/core/config.ts";
 import { demoPrice } from "../src/core/providers.ts";
 import type { Swing } from "../src/core/structure.ts";
 import type { Candle, Timeframe } from "../src/core/types.ts";
-import { demoView } from "./helpers.ts";
+import { LEGACY_TF, demoView } from "./helpers.ts";
 
 const atr = 2;
 const bar = (i: number, low: number, high: number, close: number): Candle => ({ time: i * 900, open: (low + high) / 2, high, low, close });
@@ -48,7 +48,7 @@ describe("MSNR flip: level A/V yang berganti peran, retest pertama", () => {
     expect(findMsnrFlip("SELL", [swingLow], bars, atr)).toEqual({ level: swingLow, breakIndex: 34 });
   });
   it("detectAll (msnr_flip) di data demo: hanya searah bias H1, SL/TP rencana TF", () => {
-    const cfg = mergeConfig({ strategies: ["msnr_flip"] });
+    const cfg = mergeConfig({ strategies: ["msnr_flip"], ...LEGACY_TF });
     let found = 0;
     for (let t = Date.parse("2026-07-14T06:00:00Z") / 1000; t < Date.parse("2026-07-16T06:00:00Z") / 1000; t += 1800) {
       const raw = demoView(t);

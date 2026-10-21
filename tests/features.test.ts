@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setupFeatures } from "../src/core/features.ts";
 import { DEFAULT_ENGINE_CONFIG } from "../src/core/config.ts";
+import { LEGACY_TF } from "./helpers.ts";
 import type { DetectContext, SetupCandidate } from "../src/core/strategies.ts";
 import type { Candle } from "../src/core/types.ts";
 
@@ -36,7 +37,7 @@ const ctx = (): DetectContext => ({
   spreadPips: 3,
   nowSec: NOW,
   dataTime: NOW,
-  config: DEFAULT_ENGINE_CONFIG,
+  config: { ...DEFAULT_ENGINE_CONFIG, ...LEGACY_TF },
 });
 
 describe("setupFeatures", () => {
