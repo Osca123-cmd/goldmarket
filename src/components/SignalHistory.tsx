@@ -142,7 +142,7 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
   const result: ResultKind = s.excluded ? "excluded" : running ? (tpHit >= 2 ? "tp2" : tpHit === 1 ? "tp1" : "running") : ((s.outcome ?? "open") as ResultKind);
   const pip = s.pip_size || 0.1;
   const float = running && price != null ? floatingPips(s.direction, s.entry_price, price, pip) : null;
-  // setelah TP1 SL di BE: yang ditampilkan pips TP yang sudah aman, floating ada di detail
+  // setelah TP1 SL di BE (setelah TP2 di TP1): yang ditampilkan pips TP yang sudah aman, floating ada di detail
   const locked = running && tpHit > 0 ? Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip : null;
   return (
     <HistoryRow
@@ -152,7 +152,7 @@ export function SignalHistoryItem({ s, tz, time, grade, price, extra }: { s: Set
         time={time}
         result={result}
         pips={locked ?? (running ? float : s.outcome_pips)}
-        pipsNote={locked != null ? "aman, SL di BE" : running ? "floating" : undefined}
+        pipsNote={locked != null ? (tpHit >= 2 ? `aman, SL di TP${tpHit - 1}` : "aman, SL di BE") : running ? "floating" : undefined}
         sub={s.excluded ? `Tidak dihitung di statistik. ${s.excluded_reason ?? ""}` : undefined}
         onClick={() => setOpen((v) => !v)}
         active={open}

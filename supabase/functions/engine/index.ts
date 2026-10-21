@@ -570,13 +570,16 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
         timeframe: t.timeframe,
       });
     } else if (r.tpHit > (t.outcome_tp ?? 0)) {
-      // TP baru tersentuh, sinyal masih berjalan → peringatan geser SL ke BE
+      // TP baru tersentuh, sinyal masih berjalan → peringatan geser SL (TP1 → entry/BE, TP2 → TP1)
       const tpPips = priceToPips(Math.abs([t.tp1, t.tp2, t.tp3][r.tpHit - 1] - t.entry_price), cfg.spec);
       notifRows.push({
         kind: "signal_result",
         dedupe_key: `tp${r.tpHit}:${t.id}`,
         title: `✅ TP${r.tpHit} TERSENTUH — ${t.direction} XAUUSD ${t.timeframe} +${tpPips.toFixed(1)} pips`,
-        body: `${r.tpHit === 1 ? "Geser SL ke entry (BE)" : "SL tetap di entry (BE)"} ${t.entry_price.toFixed(2)}. Bila harga kembali ke entry, sinyal ditutup WIN +${tpPips.toFixed(1)} pips. Hasil level sinyal menurut feed, bukan transaksi Anda.`,
+        body:
+          r.tpHit >= 2
+            ? `Geser SL ke TP${r.tpHit - 1} ${[t.tp1, t.tp2][r.tpHit - 2].toFixed(2)}. Bila harga kembali ke TP${r.tpHit - 1}, sinyal ditutup WIN +${tpPips.toFixed(1)} pips. Hasil level sinyal menurut feed, bukan transaksi Anda.`
+            : `Geser SL ke entry (BE) ${t.entry_price.toFixed(2)}. Bila harga kembali ke entry, sinyal ditutup WIN +${tpPips.toFixed(1)} pips. Hasil level sinyal menurut feed, bukan transaksi Anda.`,
         severity: "success",
         setup_id: t.id,
         score: t.score,

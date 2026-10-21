@@ -7,8 +7,9 @@ import { priceToPips, type InstrumentSpec } from "./instrument.ts";
  * Aturan (didokumentasikan di docs/STRATEGY.md §10):
  *  - Pelacakan dimulai saat entry tersentuh menurut feed. TP di candle tempat
  *    entry tersentuh tidak dihitung (bisa terjadi sebelum entry); SL tetap.
- *  - Setelah TP1 tersentuh, SL dipindah ke entry (BE).
- *  - WIN  : minimal TP1 tersentuh. Sinyal ditutup saat harga kembali ke entry (BE),
+ *  - Setelah TP1 tersentuh, SL dipindah ke entry (BE); setelah TP2, SL dipindah ke TP1
+ *    (permintaan pengguna 21 Okt 2026).
+ *  - WIN  : minimal TP1 tersentuh. Sinyal ditutup saat harga kembali ke SL berjalan (entry / TP1),
  *           TP3 tersentuh, atau batas waktu. Hasil = pips TP tertinggi yang tersentuh.
  *  - LOSS : SL tersentuh sebelum TP1. Hasil = −pips SL.
  *  - SL dan TP tersentuh dalam candle yang sama tanpa data lebih rinci →
@@ -73,10 +74,15 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
   if (i.price != null) points.push({ hi: i.price, lo: i.price, t: i.nowSec, touchBar: false, tick: true });
 
   const backAtEntry = (p: { hi: number; lo: number }) => (s > 0 ? p.lo <= i.entry : p.hi >= i.entry);
+  // SL berjalan: setelah TP1 di entry (BE), setelah TP2 di TP1
+  const trailStop = (hit: number) => (hit >= 2 ? i.tps[hit - 2] : i.entry);
+  const backAtTrail = (p: { hi: number; lo: number }, hit: number) => (s > 0 ? p.lo <= trailStop(hit) : p.hi >= trailStop(hit));
   for (const p of points) {
-    if (p.tick || p.t + (p.tick ? 0 : i.barSec) > floorFrom) floor();
-    // setelah TP1, SL berada di entry (BE)
-    const stopHit = tpHit > 0 ? backAtEntry(p) : s > 0 ? p.lo <= i.sl : p.hi >= i.sl;
+    // TP tercatat berlaku mulai candle SESUDAH waktu tercatatnya (candle itu sendiri bisa memuat harga sebelum TP)
+    if (p.tick || p.t >= floorFrom) floor();
+    // setelah TP1, SL berada di entry (BE); setelah TP2 di TP1
+    const stopAt = tpHit;
+    const stopHit = tpHit > 0 ? backAtTrail(p, tpHit) : s > 0 ? p.lo <= i.sl : p.hi >= i.sl;
     let reached: 0 | 1 | 2 | 3 = tpHit;
     for (let k = 0; !p.touchBar && k < 3; k++) {
       const tp = i.tps[k];
@@ -92,7 +98,8 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
     tpHit = reached;
     if (stopHit) {
       if (tpHit === 0) return { outcome: "loss", tpHit: 0, pips: slPips, ambiguous, closedAtSec: p.t, tpAtSec: tpAt, note: ambiguous ? "SL dan TP dalam candle yang sama — dihitung SL (konservatif)." : "SL tersentuh sebelum TP1." };
-      return { outcome: "win", tpHit, pips: pipsOf(i.tps[tpHit - 1]), ambiguous, closedAtSec: p.t, tpAtSec: tpAt, note: `TP${tpHit} tersentuh, lalu harga kembali ke entry (SL di BE).` };
+      const back = stopAt >= 2 ? `TP${stopAt - 1} (SL dipindah ke TP${stopAt - 1} setelah TP${stopAt})` : "entry (SL di BE)";
+      return { outcome: "win", tpHit, pips: pipsOf(i.tps[tpHit - 1]), ambiguous, closedAtSec: p.t, tpAtSec: tpAt, note: `TP${tpHit} tersentuh, lalu harga kembali ke ${back}.` };
     }
     if (firstTp && backAtEntry(p)) {
       // TP pertama dan entry dalam candle yang sama → urutan tidak diketahui; konservatif hanya TP1 lalu BE
@@ -107,7 +114,7 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
     const last = i.price ?? bars[bars.length - 1]?.close ?? i.entry;
     return { outcome: "timeout", tpHit: 0, pips: pipsOf(last), ambiguous, closedAtSec: i.nowSec, tpAtSec: tpAt, note: "Batas waktu tanpa TP1/SL; hasil = harga terakhir." };
   }
-  return { outcome: "open", tpHit, pips: null, ambiguous, closedAtSec: null, tpAtSec: tpAt, note: tpHit ? `TP${tpHit} tersentuh, SL di BE (entry). Pelacakan berlanjut.` : "Menunggu TP/SL." };
+  return { outcome: "open", tpHit, pips: null, ambiguous, closedAtSec: null, tpAtSec: tpAt, note: tpHit ? `TP${tpHit} tersentuh, SL di ${tpHit >= 2 ? `TP${tpHit - 1}` : "BE (entry)"}. Pelacakan berlanjut.` : "Menunggu TP/SL." };
 }
 
 /** Grade tampilan dari skor kualitas (bukan probabilitas). */

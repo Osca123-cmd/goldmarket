@@ -159,8 +159,8 @@ Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded
 ## 10. Riwayat sinyal (hasil menurut feed) — terpisah dari jurnal
 
 `evaluateOutcome` (`src/core/outcome.ts`) dijalankan engine tiap menit untuk setup layak yang entry-nya tersentuh:
-- **Manajemen BE**: setelah TP1 tersentuh, SL dipindah ke entry (break-even) dan notifikasi "TP1 tersentuh — geser SL ke BE" dikirim (juga untuk TP2). Setup itu tidak lagi tampil sebagai peluang aktif (tidak berlaku untuk entry baru), hanya di Riwayat Sinyal.
-- **WIN**: minimal TP1 tersentuh. Sinyal ditutup saat harga kembali ke entry (BE), TP3 tersentuh (bonus), atau batas waktu. Hasil = pips TP tertinggi yang tersentuh.
+- **Manajemen BE / SL berjalan**: setelah TP1 tersentuh, SL dipindah ke entry (break-even) dan notifikasi "TP1 tersentuh — geser SL ke BE" dikirim. **Setelah TP2 tersentuh, SL dipindah ke TP1** (permintaan pengguna 21 Okt 2026) dan notifikasi "geser SL ke TP1" dikirim. TP yang tercatat dari pelacakan sebelumnya berlaku mulai candle M5 sesudah waktu tercatatnya. Setup itu tidak lagi tampil sebagai peluang aktif (tidak berlaku untuk entry baru), hanya di Riwayat Sinyal.
+- **WIN**: minimal TP1 tersentuh. Sinyal ditutup saat harga kembali ke SL berjalan (entry setelah TP1, TP1 setelah TP2), TP3 tersentuh (bonus), atau batas waktu. Hasil = pips TP tertinggi yang tersentuh.
 - TP pertama dan entry dalam candle M5 yang sama → urutan tidak diketahui; dihitung TP1 lalu BE (konservatif).
 - **LOSS**: SL tersentuh sebelum TP1 (−pips SL).
 - Waktu entry tersentuh = awal candle M5 pertama (setelah setup dibuat) yang menyentuh entry, atau waktu tick harga bila tick lebih dulu. Candle M15 Twelve Data baru masuk saat bar tutup, jadi tidak dipakai sebagai waktu.

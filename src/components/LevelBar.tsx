@@ -38,14 +38,16 @@ export function SignalBar({ s, price, priceText, entered = true }: { s: SignalLe
   const gain = tEnd >= tEntry;
   const pip = s.pip_size || 0.1;
   const ticks = [
-    { t: 0, label: tpHit >= 1 ? "SL (BE)" : "SL", hit: false },
+    { t: 0, label: tpHit >= 2 ? `SL (TP${tpHit - 1})` : tpHit >= 1 ? "SL (BE)" : "SL", hit: false },
     { t: tEntry, label: "Entry", hit: false },
     { t: at(s.tp1), label: "TP1", hit: tpHit >= 1 },
     { t: at(s.tp2), label: "TP2", hit: tpHit >= 2 },
     { t: 1, label: "TP3", hit: tpHit >= 3 },
   ];
   const tiles = [
-    tpHit >= 1
+    tpHit >= 2
+      ? { k: `SL → TP${tpHit - 1}`, v: [s.tp1, s.tp2][tpHit - 2], n: "aman", cls: "text-gold" }
+      : tpHit >= 1
       ? { k: "SL → BE", v: s.entry_price, n: "aman", cls: "text-gold" }
       : { k: "SL", v: s.sl, n: `−${fmt(s.sl_pips, 0)}`, cls: "text-sell" },
     { k: "Entry", v: s.entry_price, n: s.entry_type, cls: "text-muted" },

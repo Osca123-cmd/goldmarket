@@ -98,7 +98,7 @@ function SignalStatsPage() {
       <Card title="Metode perhitungan">
         <ul className="list-disc space-y-1 pl-4 text-xs text-muted">
           <li>Terisi otomatis dari engine: setiap sinyal yang entry-nya tersentuh dilacak sampai selesai. Tidak perlu input jurnal.</li>
-          <li>Setelah TP1, SL dipindah ke entry (BE). WIN = pips TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry, TP3, atau 24 jam. LOSS = SL sebelum TP1.</li>
+          <li>Setelah TP1, SL dipindah ke entry (BE); setelah TP2, SL dipindah ke TP1. WIN = pips TP tertinggi yang tersentuh, ditutup saat harga kembali ke SL berjalan (entry / TP1), TP3, atau 24 jam. LOSS = SL sebelum TP1.</li>
           <li>Sinyal yang dikecualikan pengguna tidak dihitung; jumlahnya selalu ditampilkan dan sinyalnya tetap ada di Riwayat Sinyal beserta alasannya.</li>
           <li>Win rate = WIN ÷ (WIN + LOSS). TIMEOUT (24 jam tanpa TP1/SL) tidak masuk menang/kalah, tetapi pips-nya ikut dijumlah.</li>
           <li>Pips level sinyal menurut feed, belum termasuk spread/komisi/slippage — bukan hasil transaksi Anda. Hasil transaksi nyata ada di tab Jurnal saya.</li>

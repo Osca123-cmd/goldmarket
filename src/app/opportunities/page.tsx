@@ -314,7 +314,7 @@ function LiveSignal() {
           ))
         )}
         <p className="px-1 pt-2 text-[11px] text-muted">
-          Setelah TP1, SL dipindah ke entry (BE). WIN = TP tertinggi yang tersentuh, ditutup saat harga kembali ke entry / TP3 / 24 jam; LOSS = SL sebelum TP1; SL &amp; TP dalam candle yang sama dihitung SL. Hasil level sinyal menurut feed ({snapshot?.source_label ?? "—"}), belum termasuk spread/komisi, dan bukan transaksi Anda. Tidak menjamin hasil mendatang.
+          Setelah TP1, SL dipindah ke entry (BE); setelah TP2, SL dipindah ke TP1. WIN = TP tertinggi yang tersentuh, ditutup saat harga kembali ke SL berjalan (entry / TP1) / TP3 / 24 jam; LOSS = SL sebelum TP1; SL &amp; TP dalam candle yang sama dihitung SL. Hasil level sinyal menurut feed ({snapshot?.source_label ?? "—"}), belum termasuk spread/komisi, dan bukan transaksi Anda. Tidak menjamin hasil mendatang.
         </p>
       </HistoryPanel>
       <Disclaimer />
@@ -325,7 +325,7 @@ function LiveSignal() {
 function runningTitle(s: SetupRow, price: number | null): string {
   if (!isRunningSignal(s)) return `Sinyal ${s.direction} ${s.timeframe} siap, menunggu entry.`;
   const tp = s.outcome_tp ?? 0;
-  if (tp > 0) return `TP${tp} tersentuh — SL sudah di BE (${s.direction} ${s.timeframe}).`;
+  if (tp > 0) return `TP${tp} tersentuh — SL sudah di ${tp >= 2 ? `TP${tp - 1}` : "BE"} (${s.direction} ${s.timeframe}).`;
   const f = price != null ? floatingPips(s.direction, s.entry_price, price, s.pip_size || 0.1) : null;
   return `Sinyal ${s.direction} ${s.timeframe} berjalan${f != null ? `, floating ${f > 0 ? "+" : ""}${fmt(f, 0)} pips` : ""}.`;
 }

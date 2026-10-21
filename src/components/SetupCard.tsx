@@ -51,7 +51,11 @@ export function SetupCard({ s, price, tz, now, pipSize = 0.1, bare }: { s: Setup
       )}
       {running && tpHit > 0 && (
         <p className="mt-2 rounded-xl border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-ink">
-          <strong className="text-gold">TP{tpHit} tersentuh — geser SL ke entry <span className="num">{fmt(s.entry_price)}</span> (BE).</strong> Bila harga kembali ke entry, sinyal ditutup menang +{fmt(Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip, 0)} pips.
+          <strong className="text-gold">
+            TP{tpHit} tersentuh — geser SL ke {tpHit >= 2 ? `TP${tpHit - 1}` : "entry"} <span className="num">{fmt(tpHit >= 2 ? [s.tp1, s.tp2][tpHit - 2] : s.entry_price)}</span>
+            {tpHit >= 2 ? "" : " (BE)"}.
+          </strong>{" "}
+          Bila harga kembali ke {tpHit >= 2 ? `TP${tpHit - 1}` : "entry"}, sinyal ditutup menang +{fmt(Math.abs([s.tp1, s.tp2, s.tp3][tpHit - 1] - s.entry_price) / pip, 0)} pips.
         </p>
       )}
 

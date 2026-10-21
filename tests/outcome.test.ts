@@ -63,6 +63,30 @@ describe("hasil sinyal menurut feed", () => {
   it("TP2 dan entry dalam candle yang sama → hanya TP1 dihitung", () => {
     expect(evaluateOutcome({ ...base, candles: [bar(1200, 3011, 2999)] })).toMatchObject({ outcome: "win", tpHit: 1, pips: 50, ambiguous: true });
   });
+  it("setelah TP2, SL di TP1: harga kembali ke TP1 → WIN +TP2, tidak menunggu entry", () => {
+    // TP1 di 1200, TP2 di 1500, lalu turun ke 3004 (di bawah TP1 3005, masih di atas entry)
+    const r = evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3011, 3006), bar(1800, 3008, 3004)] });
+    expect(r).toMatchObject({ outcome: "win", tpHit: 2, pips: 100, closedAtSec: 1800 });
+    expect(r.note).toContain("TP1");
+    // belum kembali ke TP1 → masih berjalan dengan SL di TP1
+    expect(evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3011, 3006), bar(1800, 3008, 3006)] })).toMatchObject({ outcome: "open", tpHit: 2 });
+  });
+  it("sinyal live 21 Okt (chop_breakout BUY M30): TP2 tercatat 11.44, candle 12.25 turun ke bawah TP1 → WIN TP2", () => {
+    const t = (hhmm: string) => Date.parse(`2026-10-21T${hhmm}:00Z`) / 1000;
+    const r = evaluateOutcome({
+      ...base,
+      entry: 4125.92,
+      sl: 4118.92,
+      tps: [4132.92, 4139.92, 4146.92],
+      entryTouchedAtSec: t("10:50"),
+      // candle 11.40 menyentuh TP2 tetapi low-nya juga di bawah TP1 (urutan tidak diketahui) → belum ditutup di candle itu
+      candles: [bar(t("11:35"), 4133.72, 4131.16), bar(t("11:40"), 4141.13, 4131.79), bar(t("12:20"), 4138.05, 4133.74), bar(t("12:25"), 4135.26, 4130.87)],
+      nowSec: t("12:30"),
+      tpHitBefore: 2,
+      tpHitBeforeAtSec: t("11:44") + 2,
+    });
+    expect(r).toMatchObject({ outcome: "win", tpHit: 2, pips: 140, closedAtSec: t("12:25") });
+  });
   it("TP3 sebelum BE → WIN +150 (bonus)", () => {
     expect(evaluateOutcome({ ...base, candles: [bar(1200, 3006, 3001), bar(1500, 3016, 3002)] })).toMatchObject({ outcome: "win", tpHit: 3, pips: 150 });
   });
