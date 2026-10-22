@@ -6,6 +6,7 @@ import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level, 
 import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevels } from "./instrument.ts";
 import { scoreSetup, type ScoreBreakdown } from "./scoring.ts";
 import { asiaRange, prevDayRange } from "./features.ts";
+import { atr as atrSeries } from "./indicators.ts";
 
 export interface Gate {
   key: "data" | "structure" | "invalidation" | "volatility" | "risk";
@@ -969,9 +970,10 @@ export function zigzag(bars: Candle[], depth: number, deviation: number, backste
   let prevChange = change - 1;
   while (prevChange > 0 && dir[prevChange - 1] !== d) prevChange--;
   const from0 = change > 0 ? Math.max(0, prevChange) : Math.max(0, n - depth);
-  // ujung kaki sebelumnya (high untuk kaki turun), lalu ujung kaki sekarang sejak titik itu
+  // ujung kaki sebelumnya (high untuk kaki turun) dicari di periode arah lama saja — candle pergantian arah sudah
+  // termasuk arah baru (seperti library: z2 hanya diperbarui selama arahnya masih sama) — lalu ujung kaki sekarang sejak itu
   let prevExt = from0;
-  for (let i = from0; i <= Math.max(from0, change); i++) if (d < 0 ? bars[i].high > bars[prevExt].high : bars[i].low < bars[prevExt].low) prevExt = i;
+  for (let i = from0; i <= Math.max(from0, change - 1); i++) if (d < 0 ? bars[i].high > bars[prevExt].high : bars[i].low < bars[prevExt].low) prevExt = i;
   let pivot = prevExt;
   for (let i = prevExt; i < n; i++) if (d < 0 ? bars[i].low < bars[pivot].low : bars[i].high > bars[pivot].high) pivot = i;
   return { direction: d, pivotIndex: pivot };
@@ -1022,13 +1024,15 @@ export function detectSignalHmd(direction: Direction, pair: TfPair, c: DetectCon
   if (off < 1) return null;
   const a = ctx.atr;
   const s = sgn(direction);
+  // ATR per candle (Wilder, = ta.atr): syarat range & buffer invalidasi memakai ATR candle konfirmasi seperti indikator
+  const atrs = atrSeries(cs, 14);
   // seperti Pine: dari candle terlama di jendela "tidak telat" (≤ 2 bar ke belakang) ke candle terbaru
   let k = -1;
   let pattern: string | null = null;
   for (let j = Math.min(off - 1, 2); j >= 0; j--) {
     const i = n - j;
     const pat = hmdPattern(direction, cs, i);
-    if (!pat || cs[i].high - cs[i].low < 0.5 * a || s * (cs[i].close - h1.ema200) <= 0) continue;
+    if (!pat || cs[i].high - cs[i].low < 0.5 * (atrs[i] || a) || s * (cs[i].close - h1.ema200) <= 0) continue;
     k = i;
     pattern = pat;
     break;
@@ -1042,7 +1046,8 @@ export function detectSignalHmd(direction: Direction, pair: TfPair, c: DetectCon
   const zoneLow = direction === "BUY" ? entry - zoneH : entry;
   const zoneHigh = direction === "BUY" ? entry : entry + zoneH;
   if (s * (c.price - (direction === "BUY" ? zoneHigh : zoneLow)) > c.config.maxDistanceAtr * a) return null;
-  const invalidation = direction === "BUY" ? Math.min(pv.low, bar.low) - 0.25 * a : Math.max(pv.high, bar.high) + 0.25 * a;
+  const atrK = atrs[k] || a;
+  const invalidation = direction === "BUY" ? Math.min(pv.low, bar.low) - 0.25 * atrK : Math.max(pv.high, bar.high) + 0.25 * atrK;
   if (s * (c.price - invalidation) <= 0) return null;
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const reasons = [
