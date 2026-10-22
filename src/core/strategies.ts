@@ -1,6 +1,6 @@
 import type { Candle, Direction, EntryType, MarketBias, StopKind, StrategyId, Timeframe } from "./types.ts";
 import { TF_SECONDS } from "./types.ts";
-import { TWO_WAY_STRATEGIES, planFor, type EngineConfig, type TfPair } from "./config.ts";
+import { TWO_WAY_STRATEGIES, pairsFor, planFor, type EngineConfig, type TfPair } from "./config.ts";
 import type { MultiTfAnalysis, TfAnalysis } from "./analysis.ts";
 import { buildLevels, isBearishConfirmation, isBullishConfirmation, type Level, type Swing } from "./structure.ts";
 import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevels } from "./instrument.ts";
@@ -78,6 +78,8 @@ interface Draft {
   confirmCandles: Candle[];
   /** candle konfirmasi harus tertutup setelah waktu ini (detik) */
   confirmAfter: number;
+  /** candle konfirmasi yang sudah ditetapkan detektor sendiri (pola strateginya), menggantikan pola standar */
+  confirmedBy?: { text: string; candle: Candle };
   reasons: string[];
 }
 
@@ -100,7 +102,7 @@ function finalize(d: Draft, c: DetectContext): SetupCandidate {
   const atrConf = d.conf?.atr ?? atrCtx / 2;
   const reasons = [...d.reasons];
 
-  const conf = confirmationOf(d.direction, d.confirmCandles);
+  const conf = d.confirmedBy ?? confirmationOf(d.direction, d.confirmCandles);
   const lastConf = conf && conf.candle.time >= d.confirmAfter ? conf : null;
   const touchesZone =
     lastConf &&
@@ -931,6 +933,144 @@ export function detectSmcChoch(direction: Direction, pair: TfPair, c: DetectCont
   );
 }
 
+/**
+ * Zigzag gaya signalLib (indikator SIGNAL-HMD pengguna, 22 Okt 2026; sumber library tidak tersedia, jadi ditulis ulang):
+ * bar "di ujung atas" bila high-nya ≤ `deviation` di bawah high tertinggi `depth` bar; arah turun (-1, Buy-point)
+ * bila ujung bawah lebih baru daripada ujung atas selama ≥ `backstep` bar, selain itu naik (+1, Sell-point).
+ * Pivot = low terendah (arah -1) / high tertinggi (arah +1) sejak ujung kaki sebelumnya. Hanya candle tertutup.
+ */
+export function zigzag(bars: Candle[], depth: number, deviation: number, backstep: number): { direction: 1 | -1; pivotIndex: number } | null {
+  const n = bars.length;
+  if (n < depth + backstep + 5) return null;
+  let lastAtHigh = -Infinity;
+  let lastAtLow = -Infinity;
+  let lastCond = -Infinity;
+  const dir: (1 | -1)[] = new Array(n).fill(1);
+  for (let i = 1; i < n; i++) {
+    const k = i - 1; // barssince(kondisi[1])
+    if (k >= depth - 1) {
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let x = k - depth + 1; x <= k; x++) {
+        hh = Math.max(hh, bars[x].high);
+        ll = Math.min(ll, bars[x].low);
+      }
+      if (hh - bars[k].high <= deviation) lastAtHigh = i;
+      if (bars[k].low - ll <= deviation) lastAtLow = i;
+    }
+    const hr = i - lastAtHigh;
+    const lr = i - lastAtLow;
+    if (!(hr > lr)) lastCond = i;
+    dir[i] = i - lastCond >= backstep ? -1 : 1;
+  }
+  const d = dir[n - 1];
+  let change = n - 1;
+  while (change > 0 && dir[change - 1] === d) change--;
+  let prevChange = change - 1;
+  while (prevChange > 0 && dir[prevChange - 1] !== d) prevChange--;
+  const from0 = change > 0 ? Math.max(0, prevChange) : Math.max(0, n - depth);
+  // ujung kaki sebelumnya (high untuk kaki turun), lalu ujung kaki sekarang sejak titik itu
+  let prevExt = from0;
+  for (let i = from0; i <= Math.max(from0, change); i++) if (d < 0 ? bars[i].high > bars[prevExt].high : bars[i].low < bars[prevExt].low) prevExt = i;
+  let pivot = prevExt;
+  for (let i = prevExt; i < n; i++) if (d < 0 ? bars[i].low < bars[pivot].low : bars[i].high > bars[pivot].high) pivot = i;
+  return { direction: d, pivotIndex: pivot };
+}
+
+/** Pola konfirmasi SIGNAL-HMD mode longgar (engulfing, hammer/shooting star, harami, morning/evening star) pada bar k. */
+export function hmdPattern(direction: Direction, bars: Candle[], k: number): string | null {
+  if (k < 16) return null;
+  const c = bars[k];
+  const p = bars[k - 1];
+  const q = bars[k - 2];
+  const body = (b: Candle) => Math.abs(b.close - b.open);
+  const avgBody = (i: number) => bars.slice(i - 13, i + 1).reduce((a, b) => a + body(b), 0) / 14;
+  const rng = c.high - c.low;
+  const upW = c.high - Math.max(c.open, c.close);
+  const loW = Math.min(c.open, c.close) - c.low;
+  const safeBody = Math.max(body(c), 0.01);
+  if (direction === "BUY") {
+    if (p.close < p.open && c.close > c.open && c.close >= p.open && c.open <= p.close) return "Bullish engulfing";
+    if (rng > 0 && loW >= 1.5 * safeBody && upW <= rng * 0.35 && body(c) / rng <= 0.45) return "Hammer";
+    if (p.close < p.open && c.close > c.open && c.high <= p.high && c.low >= p.low) return "Bullish harami";
+    if (q.close < q.open && body(q) > avgBody(k - 2) && body(p) <= 0.5 * body(q) && c.close > c.open && c.close > (q.open + q.close) / 2) return "Morning star";
+    return null;
+  }
+  if (p.close > p.open && c.close < c.open && c.close <= p.open && c.open >= p.close) return "Bearish engulfing";
+  if (rng > 0 && upW >= 1.5 * safeBody && loW <= rng * 0.35 && body(c) / rng <= 0.45) return "Shooting star";
+  if (p.close > p.open && c.close < c.open && c.high <= p.high && c.low >= p.low) return "Bearish harami";
+  if (q.close > q.open && body(q) > avgBody(k - 2) && body(p) <= 0.5 * body(q) && c.close < c.open && c.close < (q.open + q.close) / 2) return "Evening star";
+  return null;
+}
+
+/**
+ * SIGNAL-HMD (indikator pengguna, 22 Okt 2026): zigzag Depth 30 / Deviation 5 tick / Backstep 5 pada TF konteks
+ * menandai Buy-point (kaki turun) / Sell-point (kaki naik); setelah candle pivot, candle pola konfirmasi (mode
+ * longgar) dalam 3 candle terbaru, range ≥ 0,5 ATR, dan close di sisi EMA200 H1 yang searah (filter tren HTF).
+ * Entry = close candle konfirmasi; area entry = 50% range candle itu (maks 70% jarak SL); invalidasi = di luar
+ * pivot/candle konfirmasi + 0,25 ATR. SL/TP mengikuti rencana engine per TF (bukan RR indikator).
+ */
+export function detectSignalHmd(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const h1 = c.analysis.tfs.H1;
+  const cs = c.candles[pair.context] ?? [];
+  if (!ctx || !h1 || cs.length < 60) return null;
+  const z = zigzag(cs, 30, 5 * c.config.spec.tickSize, 5);
+  if (!z || z.direction !== (direction === "BUY" ? -1 : 1)) return null;
+  const n = cs.length - 1;
+  const off = n - z.pivotIndex;
+  if (off < 1) return null;
+  const a = ctx.atr;
+  const s = sgn(direction);
+  // seperti Pine: dari candle terlama di jendela "tidak telat" (≤ 2 bar ke belakang) ke candle terbaru
+  let k = -1;
+  let pattern: string | null = null;
+  for (let j = Math.min(off - 1, 2); j >= 0; j--) {
+    const i = n - j;
+    const pat = hmdPattern(direction, cs, i);
+    if (!pat || cs[i].high - cs[i].low < 0.5 * a || s * (cs[i].close - h1.ema200) <= 0) continue;
+    k = i;
+    pattern = pat;
+    break;
+  }
+  if (k < 0 || !pattern) return null;
+  const bar = cs[k];
+  const pv = cs[z.pivotIndex];
+  const entry = bar.close;
+  const slPrice = pipsToPrice(planFor(c.config, pair.context).slPips, c.config.spec);
+  const zoneH = Math.min(Math.max((bar.high - bar.low) * 0.5, pipsToPrice(2, c.config.spec)), slPrice * 0.7);
+  const zoneLow = direction === "BUY" ? entry - zoneH : entry;
+  const zoneHigh = direction === "BUY" ? entry : entry + zoneH;
+  if (s * (c.price - (direction === "BUY" ? zoneHigh : zoneLow)) > c.config.maxDistanceAtr * a) return null;
+  const invalidation = direction === "BUY" ? Math.min(pv.low, bar.low) - 0.25 * a : Math.max(pv.high, bar.high) + 0.25 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `SIGNAL-HMD: ${direction === "BUY" ? "Buy-point" : "Sell-point"} zigzag ${pair.context} di ${hhmm(pv.time)} UTC (${direction === "BUY" ? "low" : "high"} ${(direction === "BUY" ? pv.low : pv.high).toFixed(2)}); konfirmasi ${pattern} ${hhmm(bar.time)} UTC, close ${direction === "BUY" ? "di atas" : "di bawah"} EMA200 H1 ${h1.ema200.toFixed(2)}.`,
+    `Area entry ${zoneLow.toFixed(2)}–${zoneHigh.toFixed(2)} (entry di close candle konfirmasi); invalidasi ${invalidation.toFixed(2)}. SL/TP rencana engine, bukan RR indikator.`,
+  ];
+  return finalize(
+    {
+      strategy: "signal_hmd",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: 2,
+      anchor: `hmd:${pv.time}`,
+      confirmCandles: c.candles[pair.confirm] ?? cs,
+      confirmAfter: pv.time,
+      confirmedBy: { text: `SIGNAL-HMD ${pattern}`, candle: bar },
+      reasons,
+    },
+    c,
+  );
+}
+
 /** candle terakhir terkurung dalam kotak ≤ maxAtr × ATR ("kandang babi") */
 export function isBoxed(bars: Candle[], atr: number, rule: { bars: number; maxAtr: number }): { high: number; low: number } | null {
   const b = bars.slice(-rule.bars);
@@ -969,15 +1109,20 @@ const DETECTORS: [StrategyId, (direction: Direction, pair: TfPair, c: DetectCont
   ["order_block", detectOrderBlock],
   ["chop_breakout", detectChopBreakout],
   ["smc_choch", detectSmcChoch],
+  ["signal_hmd", detectSignalHmd],
 ];
 
 function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): SetupCandidate[] {
   const out: SetupCandidate[] = [];
   const sdCtx = c.config.strategies.includes("sd_reversal") ? (chopRangingContext(c) ?? c) : c;
-  for (const pair of c.config.pairs) {
+  // pasangan umum dulu (urutan lama), lalu pasangan khusus strategi (strategyPairs)
+  const extra = DETECTORS.flatMap(([id]) => (c.config.strategyPairs?.[id] ?? []).filter((p) => !c.config.pairs.some((q) => q.context === p.context && q.confirm === p.confirm)));
+  const allPairs = [...c.config.pairs, ...extra.filter((p, i) => extra.findIndex((q) => q.context === p.context && q.confirm === p.confirm) === i)];
+  for (const pair of allPairs) {
     for (const dir of ["BUY", "SELL"] as Direction[]) {
       for (const [id, detect] of DETECTORS) {
         if (!c.config.strategies.includes(id) || !only(id)) continue;
+        if (!pairsFor(c.config, id).some((p) => p.context === pair.context && p.confirm === pair.confirm)) continue;
         if (c.config.contexts?.[id] && !c.config.contexts[id]!.includes(pair.context)) continue;
         const x = detect(dir, pair, id === "sd_reversal" ? sdCtx : c);
         if (x) out.push(x);

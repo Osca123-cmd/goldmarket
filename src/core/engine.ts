@@ -1,6 +1,6 @@
 import type { AnalysisStatus, Candle, FeedStatus, OpportunityStatus, Timeframe } from "./types.ts";
 import { ACTIVE_STATUSES } from "./types.ts";
-import { EXPERIMENTAL_STRATEGIES, analysisTfs, type EngineConfig } from "./config.ts";
+import { EXPERIMENTAL_STRATEGIES, analysisTfs, satelliteTfs, type EngineConfig } from "./config.ts";
 import { analyzeMarket, summarizeStatus, type MultiTfAnalysis } from "./analysis.ts";
 import { assessQuality, closedAsOf, type QualityReport } from "./dataQuality.ts";
 import { detectAll, type SetupCandidate } from "./strategies.ts";
@@ -103,16 +103,12 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
   for (const tf of Object.keys(i.rawCandles) as Timeframe[]) closed[tf] = closedAsOf(i.rawCandles[tf] ?? [], tf, i.nowSec);
 
   const spread = i.spreadPips ?? i.assumedSpreadPips;
-  const quality = assessQuality({
-    nowSec: i.nowSec,
-    quoteTimeSec: i.quoteTimeSec,
-    status: i.feedStatus,
-    candles: closed,
-    requiredTfs: tfs,
-    minBars: 60,
-    spreadPips: i.spreadPips,
-    thresholds: cfg.thresholds,
-  });
+  // TF yang hanya dipakai pasangan khusus strategi (mis. M5 untuk SIGNAL-HMD) dinilai terpisah: candle-nya bermasalah
+  // → hanya setup TF itu yang ditahan, sinyal strategi lain tetap jalan
+  const satellite = satelliteTfs(cfg);
+  const qualityArgs = { nowSec: i.nowSec, quoteTimeSec: i.quoteTimeSec, status: i.feedStatus, candles: closed, minBars: 60, spreadPips: i.spreadPips, thresholds: cfg.thresholds };
+  const quality = assessQuality({ ...qualityArgs, requiredTfs: tfs.filter((tf) => !satellite.includes(tf)) });
+  const satQuality = satellite.length ? assessQuality({ ...qualityArgs, requiredTfs: satellite }) : null;
   // TF info (H4) ikut dianalisis bila datanya ada, tetapi tidak masuk requiredTfs kualitas data di atas
   const withInfo = cfg.infoTf && closed[cfg.infoTf]?.length ? [...tfs, cfg.infoTf] : tfs;
   const analysis = analyzeMarket({ nowSec: i.nowSec, candles: closed }, withInfo, cfg.biasTfs);
@@ -133,6 +129,10 @@ export function runEngineCycle(i: EngineInput): EngineOutput {
     );
     const pool = [...i.existing];
     for (const c of cands) {
+      if (satQuality && !satQuality.ok && satellite.includes(c.timeframe)) {
+        rejected.push({ identityKey: c.identityKey, reason: `Data ${c.timeframe} belum valid: ${satQuality.reasons.join(" ")}` });
+        continue;
+      }
       if (blackoutReason) {
         rejected.push({ identityKey: c.identityKey, reason: blackoutReason });
         continue;

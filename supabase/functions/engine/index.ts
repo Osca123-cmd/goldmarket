@@ -1007,6 +1007,8 @@ async function backtest(db: Db, cfg: EngineConfig, _pid: string) {
     direction: undefined,
     // susunan TF riset dipatok (live pindah ke bias H4 sejak 21 Okt) supaya simulasi & hash tidak berubah
     biasTfs: { major: "H1", minor: "M30" },
+    // pasangan khusus strategi live (SIGNAL-HMD M5, 22 Okt) tidak disimulasikan riset; undefined → hash riset tidak berubah
+    strategyPairs: undefined,
   };
   const version = await strategyVersion(btCfg, o, hist.id);
   const nowSec = Math.floor(Date.now() / 1000);
