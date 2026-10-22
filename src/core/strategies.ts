@@ -847,6 +847,90 @@ export function detectChopBreakout(direction: Direction, pair: TfPair, c: Detect
   );
 }
 
+/**
+ * Model entry SMC (22 Okt 2026): sapuan likuiditas → CHoCH → FVG dorongan. BUY: candle CHoCH `m` (dalam 24 bar
+ * terakhir) adalah close PERTAMA di atas swing high terakhir H (≥ 0,1 ATR); di antara H dan m ada candle `k` yang
+ * menyapu swing low sebelumnya ≥ 0,1 ATR (likuiditas jual diambil); di antara k dan m terbentuk FVG naik (celah
+ * 0,1–2 ATR, candle tengah badan ≥ 0,5 ATR) yang belum diisi dan belum ditembus close. SELL cermin.
+ */
+export function findSmcChoch(
+  direction: Direction,
+  bars: Candle[],
+  swings: Swing[],
+  atr: number,
+): { sweep: Candle; sweepLevel: number; choch: Candle; chochLevel: number; fvg: { low: number; high: number; index: number } } | null {
+  const s = sgn(direction);
+  const n = bars.length - 1;
+  const highs = swings.filter((x) => x.kind === (direction === "BUY" ? "high" : "low"));
+  const lows = swings.filter((x) => x.kind === (direction === "BUY" ? "low" : "high"));
+  const ext = (b: Candle) => (direction === "BUY" ? b.low : b.high);
+  for (let m = n; m >= Math.max(2, n - 24); m--) {
+    const H = highs.filter((x) => x.index < m - 1).sort((x, y) => y.index - x.index)[0];
+    if (!H || s * (bars[m].close - H.price) < 0.1 * atr || s * (bars[m - 1].close - H.price) >= 0) continue;
+    // sapuan: ujung terjauh antara H dan CHoCH harus menembus swing lawan sebelumnya
+    let k = -1;
+    for (let i = H.index + 1; i < m; i++) if (k < 0 || s * (ext(bars[k]) - ext(bars[i])) > 0) k = i;
+    if (k < 0) continue;
+    const S = lows.filter((x) => x.index < k - 1 && x.index >= H.index - 30).sort((x, y) => y.index - x.index)[0];
+    if (!S || s * (S.price - ext(bars[k])) < 0.1 * atr) continue;
+    for (let j = Math.min(m, n - 1); j > k; j--) {
+      const a = bars[j - 1];
+      const b = bars[j];
+      const c = bars[j + 1];
+      const low = direction === "BUY" ? a.high : c.high;
+      const high = direction === "BUY" ? c.low : a.low;
+      if (high - low < 0.1 * atr || high - low > 2 * atr) continue;
+      if (s * (b.close - b.open) < 0.5 * atr) continue;
+      const after = bars.slice(j + 2);
+      if (after.some((x) => (direction === "BUY" ? x.low <= high || x.close < low : x.high >= low || x.close > high))) continue;
+      return { sweep: bars[k], sweepLevel: S.price, choch: bars[m], chochLevel: H.price, fvg: { low, high, index: j } };
+    }
+  }
+  return null;
+}
+
+/** Model entry SMC: retest pertama FVG dorongan setelah sapuan likuiditas + CHoCH; dua arah (CHoCH = arah baru). */
+export function detectSmcChoch(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  const ctx = c.analysis.tfs[pair.context];
+  const cs = c.candles[pair.context] ?? [];
+  const confCandles = c.candles[pair.confirm] ?? [];
+  if (!ctx || cs.length < 60 || confCandles.length < 3) return null;
+  const a = ctx.atr;
+  const f = findSmcChoch(direction, cs, ctx.swings, a);
+  if (!f) return null;
+  const s = sgn(direction);
+  const edge = direction === "BUY" ? f.fvg.high : f.fvg.low;
+  if (s * (c.price - edge) <= 0 || s * (c.price - edge) > c.config.maxDistanceAtr * a) return null;
+  // ide batal bila ujung sapuan ditembus ATAU celah ditembus jauh — dipakai yang lebih dekat ke entry
+  const bySweep = (direction === "BUY" ? f.sweep.low : f.sweep.high) - s * 0.1 * a;
+  const byGap = (direction === "BUY" ? f.fvg.low : f.fvg.high) - s * invAtr(c, "smc_choch", 0.3) * a;
+  const invalidation = direction === "BUY" ? Math.max(bySweep, byGap) : Math.min(bySweep, byGap);
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const reasons = [
+    ...c.analysis.reasons,
+    `SMC: candle ${pair.context} ${hhmm(f.sweep.time)} UTC menyapu ${direction === "BUY" ? "swing low" : "swing high"} ${f.sweepLevel.toFixed(2)} (likuiditas diambil), lalu close ${hhmm(f.choch.time)} UTC menembus ${direction === "BUY" ? "swing high" : "swing low"} ${f.chochLevel.toFixed(2)} (CHoCH).`,
+    `Dorongan meninggalkan FVG ${f.fvg.low.toFixed(2)}–${f.fvg.high.toFixed(2)} yang belum diisi → entry limit di tepi celah; invalidasi ${invalidation.toFixed(2)}.`,
+  ];
+  return finalize(
+    {
+      strategy: "smc_choch",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow: f.fvg.low,
+      zoneHigh: f.fvg.high,
+      invalidation,
+      levelTouches: 3,
+      anchor: `smc:${f.choch.time}:${cs[f.fvg.index].time}`,
+      confirmCandles: confCandles,
+      confirmAfter: cs[f.fvg.index + 1].time + TF_SECONDS[pair.context],
+      reasons,
+    },
+    c,
+  );
+}
+
 /** candle terakhir terkurung dalam kotak ≤ maxAtr × ATR ("kandang babi") */
 export function isBoxed(bars: Candle[], atr: number, rule: { bars: number; maxAtr: number }): { high: number; low: number } | null {
   const b = bars.slice(-rule.bars);
@@ -884,6 +968,7 @@ const DETECTORS: [StrategyId, (direction: Direction, pair: TfPair, c: DetectCont
   ["fvg_retest", detectFvgRetest],
   ["order_block", detectOrderBlock],
   ["chop_breakout", detectChopBreakout],
+  ["smc_choch", detectSmcChoch],
 ];
 
 function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): SetupCandidate[] {

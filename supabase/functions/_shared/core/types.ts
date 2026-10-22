@@ -27,7 +27,7 @@ export interface Candle {
 }
 
 export type Direction = "BUY" | "SELL";
-export type StrategyId = "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal" | "crt" | "msnr_flip" | "fvg_retest" | "order_block" | "chop_breakout";
+export type StrategyId = "trend_pullback" | "breakout_retest" | "liquidity_sweep" | "sd_reversal" | "crt" | "msnr_flip" | "fvg_retest" | "order_block" | "chop_breakout" | "smc_choch";
 export type EntryType = "market" | "limit" | "stop";
 /** jenis entry stop: in_zone = harga di dalam area tanpa konfirmasi (pemicu high/low candle); back_to_zone = harga di seberang area, masuk saat kembali */
 export type StopKind = "in_zone" | "back_to_zone";

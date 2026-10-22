@@ -136,7 +136,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   minRrAfterCost: 1.5,
   minSlAtrConfirm: 0.8,
   minSlAtrContext: 0.75,
-  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12, chop_breakout: 6 },
+  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12, chop_breakout: 6, smc_choch: 12 },
   dedupePips: 30,
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
@@ -147,13 +147,15 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   // 21 Okt 2026 (optimasi per strategi, candle XAU/USD Twelve Data 4 Mei–21 Okt, semua sinyal tanpa aturan 1-sinyal):
   // S&D reversal masuk justru saat momentum M15 berlawanan (pantulan) → tidak disaring momentum:
   // S&D 20,6 → 30,0 sinyal/minggu, +19,9 → +27,9 pips/sinyal, lebih baik di kedua paruh.
-  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout"], momentum: { tf: "M15", fast: 8, slow: 21, skip: ["sd_reversal"] } },
+  // smc_choch dua arah: CHoCH sudah menandai arah baru (22 Okt 2026)
+  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout", "smc_choch"], momentum: { tf: "M15", fast: 8, slow: 21, skip: ["sd_reversal"] } },
   // invalidasi lebih dekat ke level agar SL tetap rencana TF tidak gagal gate "SL vs invalidasi" (sumber utama setup terbuang):
   //  - breakout_retest 0,6 → 0,4: 7,8 → 17,7 sinyal/minggu, +2.960 → +4.110 pips (0,3 dan 0,5 juga lebih baik dari 0,6);
   //  - trend_pullback: swing lawan (≤ 3 ATR, hampir selalu di luar SL) → tepi area EMA ∓ 0,2 ATR: 0,2 → 1,6 sinyal/minggu, +39/sinyal;
   //  - sd_reversal 0,35 → 0,25: pips/sinyal naik, drawdown turun, lebih baik di kedua paruh.
   // Ditolak (lebih jelek di XAU/USD): momentum bebas untuk CRT & Liquidity sweep, MSNR 0,35, FVG entry tengah/tepi dekat, Liquidity sweep hanya M15.
-  invalidationAtr: { breakout_retest: 0.4, trend_pullback: 0.2, sd_reversal: 0.25 },
+  // smc_choch: invalidasi = yang lebih dekat dari ujung sapuan ∓ 0,1 ATR dan tepi jauh FVG ∓ 0,3 ATR (0,5 lebih jelek)
+  invalidationAtr: { breakout_retest: 0.4, trend_pullback: 0.2, sd_reversal: 0.25, smc_choch: 0.3 },
 };
 
 export function mergeConfig(partial: Partial<EngineConfig> | null | undefined): EngineConfig {
@@ -193,10 +195,11 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
  * tampilan filter: setup lamanya tetap bisa dicari dengan label "nonaktif". Perbarui bila susunan live berubah.
  */
 // 21 Okt 2026: semua strategi yang pernah dinonaktifkan diaktifkan lagi atas permintaan pengguna
-export const RETIRED_STRATEGIES: StrategyId[] = [];
+// 22 Okt 2026: Trend pullback & MSNR flip dimatikan (paling jarang memberi sinyal), diganti SMC sweep + CHoCH + FVG
+export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "msnr_flip"];
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
-export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout"];
+export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout", "smc_choch"];
 /** Strategi dua arah penuh: boleh melawan bias utama (tidak ditolak gate struktur & tidak dibatalkan saat bias berlawanan). */
 // MSNR flip dikembalikan ke searah tren H1 saja (permintaan pengguna 20 Okt 2026 sore)
 // FVG retest sempat dibatasi (20 Okt sore), dibuka lagi dua arah penuh 20 Okt malam atas permintaan pengguna
@@ -212,4 +215,5 @@ export const STRATEGY_LABEL: Record<StrategyId, string> = {
   fvg_retest: "FVG retest (Eksperimen)",
   order_block: "Order Block (Eksperimen)",
   chop_breakout: "Breakout kandang babi (Eksperimen)",
+  smc_choch: "SMC · Sweep + CHoCH + FVG (Eksperimen)",
 };
