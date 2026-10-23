@@ -143,7 +143,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   minRrAfterCost: 1.5,
   minSlAtrConfirm: 0.8,
   minSlAtrContext: 0.75,
-  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12, chop_breakout: 6, smc_choch: 12, signal_hmd: 8 },
+  expiryBars: { trend_pullback: 16, breakout_retest: 12, liquidity_sweep: 8, sd_reversal: 8, crt: 8, msnr_flip: 12, fvg_retest: 12, order_block: 12, chop_breakout: 6, smc_choch: 12, signal_hmd: 8, sr_market: 4 },
   dedupePips: 30,
   cooldownBars: 2,
   maxDistanceAtr: 1.5,
@@ -157,7 +157,8 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   // smc_choch dua arah: CHoCH sudah menandai arah baru (22 Okt 2026)
   // signal_hmd (indikator SIGNAL-HMD pengguna, 22 Okt 2026): dua arah dengan filter EMA200 H1 sendiri; masuk tepat setelah
   // Buy/Sell-point zigzag sehingga momentum M15 hampir selalu berlawanan → tidak disaring momentum (dengan filter: 0 sinyal)
-  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout", "smc_choch", "signal_hmd"], momentum: { tf: "M15", fast: 8, slow: 21, skip: ["sd_reversal", "signal_hmd"] } },
+  // sr_market (23 Okt 2026): pantulan S/R seperti S&D → dua arah dan tidak disaring momentum (diuji begitu)
+  direction: { twoWay: ["crt", "fvg_retest", "order_block", "chop_breakout", "smc_choch", "signal_hmd", "sr_market"], momentum: { tf: "M15", fast: 8, slow: 21, skip: ["sd_reversal", "signal_hmd", "sr_market"] } },
   // SIGNAL-HMD hanya M5 (TF pilihan pengguna untuk indikatornya). Uji XAU/USD 4 Mei–21 Okt, aturan 1 sinyal sekaligus:
   // 76 trade, win 61%, +32/sinyal; sistem 59,4 → 62,8 sinyal/minggu, +19.610 → +21.860 pips, drawdown 400 → 380.
   // M30: 12 trade +76/sinyal tetapi hanya 0,5 sinyal/minggu; M15: +2,5/sinyal (paruh 1 rugi).
@@ -231,7 +232,7 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
 export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "msnr_flip", "order_block", "liquidity_sweep", "crt", "breakout_retest"];
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
-export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout", "smc_choch", "signal_hmd"];
+export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout", "smc_choch", "signal_hmd", "sr_market"];
 /** Strategi dua arah penuh: boleh melawan bias utama (tidak ditolak gate struktur & tidak dibatalkan saat bias berlawanan). */
 // MSNR flip dikembalikan ke searah tren H1 saja (permintaan pengguna 20 Okt 2026 sore)
 // FVG retest sempat dibatasi (20 Okt sore), dibuka lagi dua arah penuh 20 Okt malam atas permintaan pengguna
@@ -249,4 +250,5 @@ export const STRATEGY_LABEL: Record<StrategyId, string> = {
   chop_breakout: "Breakout kandang babi (Eksperimen)",
   smc_choch: "SMC · Sweep + CHoCH + FVG (Eksperimen)",
   signal_hmd: "SIGNAL-HMD (Eksperimen)",
+  sr_market: "S/R Market Entry (Eksperimen)",
 };

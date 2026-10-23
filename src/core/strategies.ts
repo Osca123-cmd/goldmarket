@@ -7,6 +7,7 @@ import { levelsFromEntry, pipsToPrice, priceToPips, roundToTick, type TradeLevel
 import { scoreSetup, type ScoreBreakdown } from "./scoring.ts";
 import { asiaRange, prevDayRange } from "./features.ts";
 import { atr as atrSeries } from "./indicators.ts";
+import { findSrTouch } from "./srTouch.ts";
 
 export interface Gate {
   key: "data" | "structure" | "invalidation" | "volatility" | "risk";
@@ -1076,6 +1077,54 @@ export function detectSignalHmd(direction: Direction, pair: TfPair, c: DetectCon
   );
 }
 
+/**
+ * S/R Market Entry (23 Okt 2026, permintaan pengguna): sentuhan PERTAMA support (BUY) / resistance (SELL) TF konteks
+ * M15 (`findSrTouch`) → ENTRY MARKET di harga sekarang. Tanpa model AI: model regresi logistik yang diuji tidak bisa
+ * memilih level (AUC uji 0,50), sedangkan semua sentuhan pertama positif. Invalidasi = level ∓ 0,3 ATR; SL/TP rencana
+ * engine. Uji XAU/USD (aturan 1 sinyal sekaligus, + 5 strategi live): Mei–Okt 2026 +16.520 → +23.310 pips; periode
+ * independen Mei–Okt 2025 +13.750 → +15.972, naik di kedua paruh keduanya.
+ */
+export function detectSrMarket(direction: Direction, pair: TfPair, c: DetectContext): SetupCandidate | null {
+  if (pair.context !== "M15") return null;
+  const ctx = c.analysis.tfs[pair.context];
+  if (!ctx) return null;
+  const touch = findSrTouch(direction, pair.context, c.analysis, c.candles);
+  if (!touch) return null;
+  const a = ctx.atr;
+  const s = sgn(direction);
+  const L = touch.level.price;
+  const zoneLow = L - 0.15 * a;
+  const zoneHigh = L + 0.15 * a;
+  const invalidation = L - s * 0.3 * a;
+  if (s * (c.price - invalidation) <= 0) return null;
+  const reasons = [
+    ...c.analysis.reasons,
+    `S/R Market Entry: sentuhan pertama ${direction === "BUY" ? "support" : "resistance"} ${pair.context} ${L.toFixed(2)} (${touch.level.touches}× sentuhan), harga datang dari ${direction === "BUY" ? "atas" : "bawah"}.`,
+    `Entry market di harga sekarang; invalidasi bila harga menembus ${invalidation.toFixed(2)}.`,
+  ];
+  const cand = finalize(
+    {
+      strategy: "sr_market",
+      direction,
+      pair,
+      ctx,
+      conf: c.analysis.tfs[pair.confirm],
+      zoneLow,
+      zoneHigh,
+      invalidation,
+      levelTouches: touch.level.touches,
+      anchor: `srm:${L.toFixed(2)}@${touch.bar.time}`,
+      confirmCandles: c.candles[pair.confirm] ?? [],
+      confirmAfter: 0,
+      confirmedBy: { text: `Sentuhan pertama ${direction === "BUY" ? "support" : "resistance"}`, candle: touch.bar },
+      reasons,
+    },
+    c,
+  );
+  // strategi ini khusus entry market: bila harga sudah keluar dari zona, tidak ada sinyal
+  return cand.entryType === "market" ? cand : null;
+}
+
 /** candle terakhir terkurung dalam kotak ≤ maxAtr × ATR ("kandang babi") */
 export function isBoxed(bars: Candle[], atr: number, rule: { bars: number; maxAtr: number }): { high: number; low: number } | null {
   const b = bars.slice(-rule.bars);
@@ -1115,6 +1164,7 @@ const DETECTORS: [StrategyId, (direction: Direction, pair: TfPair, c: DetectCont
   ["chop_breakout", detectChopBreakout],
   ["smc_choch", detectSmcChoch],
   ["signal_hmd", detectSignalHmd],
+  ["sr_market", detectSrMarket],
 ];
 
 function runDetectors(c: DetectContext, only: (s: StrategyId) => boolean): SetupCandidate[] {

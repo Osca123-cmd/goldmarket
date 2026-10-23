@@ -61,7 +61,7 @@ describe("arah dari setup & momentum, bukan dipaksa tren besar", () => {
 
   it("config default: S&D dikecualikan dari momentum; invalidasi per strategi terisi", () => {
     const cfg = mergeConfig({ strategies: ["sd_reversal"] });
-    expect(cfg.direction?.momentum?.skip).toEqual(["sd_reversal", "signal_hmd"]);
+    expect(cfg.direction?.momentum?.skip).toEqual(["sd_reversal", "signal_hmd", "sr_market"]);
     expect(cfg.invalidationAtr).toMatchObject({ breakout_retest: 0.4, trend_pullback: 0.2, sd_reversal: 0.25 });
     // override sebagian lewat engine_state.config tidak menghapus nilai lain
     expect(mergeConfig({ invalidationAtr: { breakout_retest: 0.5 } }).invalidationAtr).toMatchObject({ breakout_retest: 0.5, sd_reversal: 0.25 });
