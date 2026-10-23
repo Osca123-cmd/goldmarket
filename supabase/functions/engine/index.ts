@@ -320,7 +320,9 @@ async function trackingCandles(
 ): Promise<Candle[]> {
   if (usesTwelveDataCandles(p.id)) {
     const day = iso(nowSec).slice(0, 10);
-    const m1 = (state.m1 ?? {}) as { day?: string; used?: number; last?: number };
+    // disimpan di engine_state.maintenance (jsonb) — engine_state tidak punya kolom sendiri untuk ini
+    const maint = (state.maintenance ?? {}) as Record<string, unknown>;
+    const m1 = (maint.m1 ?? {}) as { day?: string; used?: number; last?: number };
     const used = m1.day === day ? (m1.used ?? 0) : 0;
     const near = price != null && tracking.some((t) => {
       const hit = t.outcome_tp ?? 0;
@@ -333,11 +335,11 @@ async function trackingCandles(
     if (due && used < M1_DAILY_MAX && isMarketOpenBySchedule(nowSec * 1000)) {
       try {
         await upsertCandles(db, p.id, "M1", marketHoursOnly(await p.fetchCandles("M1", 30, nowSec), "M1"));
-        state.m1 = { day, used: used + 1, last: nowSec };
+        state.maintenance = { ...maint, m1: { day, used: used + 1, last: nowSec } };
       } catch (e) {
         // M1 gagal tidak menghentikan pelacakan: tetap pakai M5
         console.error("m1", scrub((e as Error).message));
-        state.m1 = { day, used: used + 1, last: nowSec };
+        state.maintenance = { ...maint, m1: { day, used: used + 1, last: nowSec } };
       }
     }
   }
@@ -588,7 +590,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     .or("outcome.is.null,outcome.eq.open")
     .limit(100);
   const trackCandles = tracking?.length ? await trackingCandles(db, provider, state, tracking, price, t0, cfg, m5) : m5;
-  if (trackCandles !== m5) fetchInfo = { ...fetchInfo, m1_used_today: (state.m1 as { used?: number } | undefined)?.used ?? 0 };
+  if (trackCandles !== m5) fetchInfo = { ...fetchInfo, m1_used_today: ((state.maintenance ?? {}) as { m1?: { used?: number } }).m1?.used ?? 0 };
   for (const t of tracking ?? []) {
     const touched = sec(t.entry_touched_at);
     if (touched == null) continue;
@@ -668,7 +670,10 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
   state.last_run_at = new Date().toISOString();
   if (failures === 0) state.last_success_at = new Date().toISOString();
   state.updated_at = new Date().toISOString();
-  await db.from("engine_state").upsert({ id: "engine", ...state });
+  // gagal simpan state = engine lupa waktu ambil candle (kredit Twelve Data terbuang) → jangan ditelan diam-diam
+  const { error: stateErr } = await db.from("engine_state").upsert({ id: "engine", ...state });
+  const stateError = stateErr ? `engine_state gagal disimpan: ${stateErr.message}` : null;
+  if (stateError) console.error(stateError);
 
   // ---- polling harga tambahan dalam menit yang sama (provider tanpa batas kredit ketat) ----
   if (provider.id !== "twelvedata" && failures === 0) {
@@ -699,7 +704,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     rejected: out.rejected.length,
     notifications: notifRows.length,
     fetched: fetchInfo,
-    error: lastError,
+    error: lastError ?? stateError,
     candle_error: candleError,
   };
 }
