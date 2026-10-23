@@ -27,6 +27,7 @@ import {
   runEngineCycle,
   DEFAULT_BT,
   evaluateOutcome,
+  mergeFineCandles,
   readyTitle,
   classifyGoldImpact,
   dedupeNews,
@@ -58,6 +59,14 @@ const QUOTE_INTERVAL_SEC = Number(env("QUOTE_INTERVAL_SEC", "60"));
 const ASSUMED_SPREAD_PIPS = Number(env("ASSUMED_SPREAD_PIPS", "3"));
 const STORED_TFS: Timeframe[] = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const SIGNAL_MAX_HOLD_SEC = Number(env("SIGNAL_MAX_HOLD_HOURS", "24")) * 3600;
+/**
+ * Candle M1 untuk sinyal yang sedang berjalan (23 Okt 2026): TP/SL terdeteksi per menit dan urutan harga di candle M5
+ * ambigu jadi diketahui. Twelve Data (kredit terbatas): diambil tiap menit bila harga ≤ M1_NEAR_PIPS dari TP berikutnya
+ * atau SL berjalan, selain itu tiap M1_FAR_SEC, maks. M1_DAILY_MAX permintaan per hari (UTC); kuota habis → kembali ke M5.
+ */
+const M1_NEAR_PIPS = Number(env("M1_NEAR_PIPS", "20"));
+const M1_FAR_SEC = Number(env("M1_FAR_SEC", "240"));
+const M1_DAILY_MAX = Number(env("M1_DAILY_MAX", "250"));
 const APP_URL = env("APP_URL", "https://osca123-cmd.github.io/goldmarket/");
 const NEWS_BELL_MIN = 30; // notifikasi in-app (lonceng) untuk news besar, menit sebelum rilis
 
@@ -293,6 +302,47 @@ function setupRow(c: SetupCandidate, p: MarketProvider, price: number, session: 
     data_source: p.label,
     data_time: iso(c.dataTime),
   };
+}
+
+/**
+ * Candle untuk pelacakan hasil sinyal berjalan: M5 tersimpan digabung M1 (lihat M1_* di atas). M1 Twelve Data diambil
+ * sesuai jarak harga ke level & kuota harian; provider lain sudah menyimpan M1 lewat refreshCandles.
+ */
+async function trackingCandles(
+  db: Db,
+  p: MarketProvider,
+  state: Record<string, any>,
+  tracking: { direction: string; entry_price: number; sl: number; tp1: number; tp2: number; tp3: number; outcome_tp: number | null }[],
+  price: number | null,
+  nowSec: number,
+  cfg: EngineConfig,
+  m5: Candle[],
+): Promise<Candle[]> {
+  if (usesTwelveDataCandles(p.id)) {
+    const day = iso(nowSec).slice(0, 10);
+    const m1 = (state.m1 ?? {}) as { day?: string; used?: number; last?: number };
+    const used = m1.day === day ? (m1.used ?? 0) : 0;
+    const near = price != null && tracking.some((t) => {
+      const hit = t.outcome_tp ?? 0;
+      const tps = [t.tp1, t.tp2, t.tp3];
+      const stop = hit >= 2 ? tps[hit - 2] : hit === 1 ? t.entry_price : t.sl;
+      const levels = hit < 3 ? [tps[hit], stop] : [stop];
+      return levels.some((l) => priceToPips(Math.abs(price - l), cfg.spec) <= M1_NEAR_PIPS);
+    });
+    const due = nowSec - (m1.last ?? 0) >= (near ? 55 : M1_FAR_SEC);
+    if (due && used < M1_DAILY_MAX && isMarketOpenBySchedule(nowSec * 1000)) {
+      try {
+        await upsertCandles(db, p.id, "M1", marketHoursOnly(await p.fetchCandles("M1", 30, nowSec), "M1"));
+        state.m1 = { day, used: used + 1, last: nowSec };
+      } catch (e) {
+        // M1 gagal tidak menghentikan pelacakan: tetap pakai M5
+        console.error("m1", scrub((e as Error).message));
+        state.m1 = { day, used: used + 1, last: nowSec };
+      }
+    }
+  }
+  const m1 = await loadCandles(db, p.id, "M1", 600);
+  return m1.length ? mergeFineCandles(m5, TF_SECONDS.M5, m1, TF_SECONDS.M1) : m5;
 }
 
 // ---------------------------------------------------------------------------
@@ -537,6 +587,8 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
     .eq("eligible", true)
     .or("outcome.is.null,outcome.eq.open")
     .limit(100);
+  const trackCandles = tracking?.length ? await trackingCandles(db, provider, state, tracking, price, t0, cfg, m5) : m5;
+  if (trackCandles !== m5) fetchInfo = { ...fetchInfo, m1_used_today: (state.m1 as { used?: number } | undefined)?.used ?? 0 };
   for (const t of tracking ?? []) {
     const touched = sec(t.entry_touched_at);
     if (touched == null) continue;
@@ -546,7 +598,7 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
       sl: t.sl,
       tps: [t.tp1, t.tp2, t.tp3],
       entryTouchedAtSec: touched,
-      candles: m5,
+      candles: trackCandles,
       barSec: TF_SECONDS.M5,
       price: out.quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? price : null,
       nowSec: t0,

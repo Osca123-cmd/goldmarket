@@ -182,6 +182,7 @@ Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded
 - TP di candle M5 tempat entry tersentuh tidak dihitung (harga itu bisa terjadi sebelum entry); SL di candle itu tetap dihitung.
 - TP yang sudah tercatat tidak pernah turun lagi.
 - SL & TP dalam candle M5 yang sama → TP pada candle itu tidak dihitung (konservatif) dan ditandai ambigu.
+- **Candle M1 untuk sinyal berjalan** (23 Okt 2026, setelah sinyal S/R Market Entry SELL 20.15 WIB: TP1 baru tercatat di awal candle M5 berikutnya dan candle 20.25 yang menyentuh TP1 sekaligus naik di atas entry ditutup konservatif sebagai TP1 lalu BE): selama ada sinyal berjalan engine mengambil 30 candle M1 Twelve Data — tiap menit bila harga ≤ 20 pips (`M1_NEAR_PIPS`) dari TP berikutnya atau SL berjalan, selain itu tiap 4 menit (`M1_FAR_SEC`), maks. 250 permintaan/hari (`M1_DAILY_MAX`). `mergeFineCandles` mengganti bar M5 yang isinya lengkap di M1 (dan bar M5 yang masih berjalan) dengan bar M1, sehingga TP/SL terdeteksi per menit dan urutan harga di dalam M5 diketahui; tanpa M1 (kuota habis/gagal) pelacakan kembali ke M5 seperti sebelumnya.
 - **TIMEOUT**: 24 jam (`SIGNAL_MAX_HOLD_HOURS`) tanpa TP1 maupun SL → hasil = pips harga terakhir.
 - Spread/komisi/slippage tidak dikurangkan. Ini hasil level sinyal, bukan transaksi pengguna; jurnal tidak pernah diubah otomatis.
 - Grade (A+ ≥ 80, A ≥ 70, B ≥ 60, C < 60) diturunkan dari skor kualitas, bukan probabilitas.

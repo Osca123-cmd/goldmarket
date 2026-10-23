@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateOutcome, gradeOf } from "../src/core/outcome.ts";
+import { evaluateOutcome, gradeOf, mergeFineCandles } from "../src/core/outcome.ts";
 import { DEFAULT_XAUUSD } from "../src/core/instrument.ts";
 
 const bar = (time: number, h: number, l: number) => ({ time, open: (h + l) / 2, high: h, low: l, close: (h + l) / 2 });
@@ -94,3 +94,36 @@ describe("hasil sinyal menurut feed", () => {
     expect([gradeOf(85), gradeOf(72), gradeOf(61), gradeOf(40), gradeOf(null)]).toEqual(["A+", "A", "B", "C", null]);
   });
 });
+
+describe("pelacakan dengan candle M1 (23 Okt 2026)", () => {
+  const t = (hhmm: string) => Date.parse(`2026-10-23T${hhmm}:00Z`) / 1000;
+  // sinyal live S/R Market Entry SELL M15 23 Okt 20.15 WIB: entry market 4032, SL 4037, TP 4027/4022/4017
+  const sell = { ...base, direction: "SELL" as const, entry: 4032, sl: 4037, tps: [4027, 4022, 4017] as [number, number, number], entryTouchedAtSec: t("13:15") + 1, nowSec: t("13:31") };
+  const m5 = [bar(t("13:15"), 4032.26, 4030.15), bar(t("13:20"), 4032.58, 4030.31), bar(t("13:25"), 4034.68, 4026.09)];
+  // isi candle 13.25 per menit: naik dulu ke 4034,68 (belum SL 4037), baru turun menyentuh TP1 4027 di 13.28
+  const m1 = [bar(t("13:25"), 4034.68, 4030.7), bar(t("13:26"), 4033.9, 4031.2), bar(t("13:27"), 4031.5, 4028.4), bar(t("13:28"), 4028.6, 4026.09), bar(t("13:29"), 4029.1, 4027.6)];
+
+  it("hanya M5: candle 13.25 menyentuh TP1 dan entry sekaligus → ditutup konservatif TP1 lalu BE (perilaku lama)", () => {
+    expect(evaluateOutcome({ ...sell, candles: m5 })).toMatchObject({ outcome: "win", tpHit: 1, pips: 50, ambiguous: true });
+  });
+
+  it("dengan M1: urutan diketahui (naik dulu, lalu TP1 di 13.28) → TP1 tercatat, sinyal tetap berjalan dengan SL di BE", () => {
+    const r = evaluateOutcome({ ...sell, candles: mergeFineCandles(m5, 300, m1, 60) });
+    expect(r).toMatchObject({ outcome: "open", tpHit: 1, tpAtSec: t("13:28"), ambiguous: false });
+  });
+
+  it("M1 mendeteksi TP lebih cepat: candle M5 yang masih berjalan diganti M1 yang sudah ada", () => {
+    // M5 13.25 belum masuk sama sekali; M1 13.25–13.28 sudah ada
+    const r = evaluateOutcome({ ...sell, candles: mergeFineCandles(m5.slice(0, 2), 300, m1.slice(0, 4), 60) });
+    expect(r).toMatchObject({ outcome: "open", tpHit: 1, tpAtSec: t("13:28") });
+  });
+
+  it("mergeFineCandles: M5 penuh diganti M1, M5 tanpa M1 dipakai apa adanya, span per bar", () => {
+    const merged = mergeFineCandles(m5, 300, m1, 60);
+    expect(merged.map((c) => [c.time - t("13:15"), c.span])).toEqual([[0, 300], [300, 300], [600, 60], [660, 60], [720, 60], [780, 60], [840, 60]]);
+    // M1 bolong di tengah candle lama → candle M5 tetap dipakai
+    const holed = mergeFineCandles(m5, 300, [m1[0], m1[1], m1[3], m1[4]], 60);
+    expect(holed.filter((c) => c.span === 300)).toHaveLength(3);
+  });
+});
+

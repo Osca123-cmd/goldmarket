@@ -26,9 +26,9 @@ export interface OutcomeInput {
   sl: number;
   tps: [number, number, number];
   entryTouchedAtSec: number;
-  /** candle sejak entry tersentuh (boleh termasuk bar berjalan) */
-  candles: Candle[];
-  /** durasi bar candle (detik) */
+  /** candle sejak entry tersentuh (boleh termasuk bar berjalan); boleh campuran M1/M5 dengan `span` per bar */
+  candles: (Candle & { span?: number })[];
+  /** durasi bar candle (detik) bila bar tidak membawa `span` */
   barSec: number;
   price: number | null;
   nowSec: number;
@@ -51,6 +51,33 @@ export interface OutcomeResult {
   note: string;
 }
 
+/**
+ * Gabungkan candle kasar (M5) dengan candle halus (M1) untuk pelacakan hasil (23 Okt 2026): bar M5 yang seluruh
+ * isinya tersedia di M1 diganti bar-bar M1 (urutan harga di dalam M5 jadi diketahui, TP/SL terdeteksi per menit);
+ * bar M5 yang masih berjalan diganti M1 yang sudah ada; bar M5 tanpa M1 tetap dipakai apa adanya. Bar M1 sesudah
+ * bar M5 terakhir (M5-nya belum masuk) ikut dipakai. Setiap bar diberi `span` (detik).
+ */
+export function mergeFineCandles(coarse: Candle[], coarseSec: number, fine: Candle[], fineSec: number): (Candle & { span: number })[] {
+  const byTime = new Map(fine.map((c) => [c.time, c]));
+  const lastFine = fine.length ? Math.max(...fine.map((c) => c.time)) : -Infinity;
+  const out: (Candle & { span: number })[] = [];
+  for (const c of coarse) {
+    const parts: Candle[] = [];
+    for (let t = c.time; t < c.time + coarseSec; t += fineSec) {
+      const f = byTime.get(t);
+      if (!f) break;
+      parts.push(f);
+    }
+    const full = parts.length === coarseSec / fineSec;
+    const runningCovered = parts.length > 0 && parts[parts.length - 1].time === lastFine;
+    if (full || runningCovered) out.push(...parts.map((p) => ({ ...p, span: fineSec })));
+    else out.push({ ...c, span: coarseSec });
+  }
+  const end = coarse.length ? coarse[coarse.length - 1].time + coarseSec : -Infinity;
+  for (const f of fine) if (f.time >= end) out.push({ ...f, span: fineSec });
+  return out.sort((a, b) => a.time - b.time);
+}
+
 export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
   const s = i.direction === "BUY" ? 1 : -1;
   const pipsOf = (price: number) => priceToPips(s * (price - i.entry), i.spec);
@@ -68,7 +95,7 @@ export function evaluateOutcome(i: OutcomeInput): OutcomeResult {
   const floorFrom = i.tpHitBeforeAtSec ?? Infinity;
   let ambiguous = false;
   // bar tempat entry tersentuh ikut dihitung (rentangnya bisa memuat SL/TP setelah sentuhan)
-  const bars = i.candles.filter((c) => c.time + i.barSec > i.entryTouchedAtSec);
+  const bars = i.candles.filter((c) => c.time + (c.span ?? i.barSec) > i.entryTouchedAtSec);
   // candle sentuhan bisa memuat harga sebelum entry → TP di candle itu tidak dihitung (SL tetap)
   const points: { hi: number; lo: number; t: number; touchBar: boolean; tick?: boolean }[] = bars.map((c) => ({ hi: c.high, lo: c.low, t: c.time, touchBar: c.time <= i.entryTouchedAtSec }));
   if (i.price != null) points.push({ hi: i.price, lo: i.price, t: i.nowSec, touchBar: false, tick: true });
