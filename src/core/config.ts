@@ -227,7 +227,8 @@ export function planFor(cfg: Pick<EngineConfig, "plan" | "planByTf">, tf: Timefr
  */
 // 21 Okt 2026: semua strategi yang pernah dinonaktifkan diaktifkan lagi atas permintaan pengguna
 // 22 Okt 2026: Trend pullback & MSNR flip dimatikan (paling jarang memberi sinyal), diganti SMC sweep + CHoCH + FVG
-export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "msnr_flip"];
+// 23 Okt 2026: Order Block, Liquidity sweep, CRT, Breakout retest dimatikan atas permintaan pengguna
+export const RETIRED_STRATEGIES: StrategyId[] = ["trend_pullback", "msnr_flip", "order_block", "liquidity_sweep", "crt", "breakout_retest"];
 
 /** strategi yang aktif di live sebagai EKSPERIMEN (belum terbukti di backtest) — diberi label di kartu & notifikasi */
 export const EXPERIMENTAL_STRATEGIES: StrategyId[] = ["sd_reversal", "liquidity_sweep", "crt", "msnr_flip", "fvg_retest", "order_block", "chop_breakout", "smc_choch", "signal_hmd"];

@@ -51,10 +51,10 @@ describe("SMC: sapuan likuiditas → CHoCH → FVG", () => {
     expect(findSmcChoch("SELL", scenario(), swings, 1)).toBeNull();
   });
 
-  it("config default: SMC dua arah dengan invalidasi 0,3 ATR; Trend pullback & MSNR flip pensiun", () => {
+  it("config default: SMC dua arah dengan invalidasi 0,3 ATR; strategi pensiun tercatat", () => {
     expect(DEFAULT_ENGINE_CONFIG.direction?.twoWay).toContain("smc_choch");
     expect(DEFAULT_ENGINE_CONFIG.invalidationAtr?.smc_choch).toBe(0.3);
     expect(DEFAULT_ENGINE_CONFIG.expiryBars.smc_choch).toBe(12);
-    expect(RETIRED_STRATEGIES).toEqual(["trend_pullback", "msnr_flip"]);
+    expect(RETIRED_STRATEGIES).toEqual(["trend_pullback", "msnr_flip", "order_block", "liquidity_sweep", "crt", "breakout_retest"]);
   });
 });
