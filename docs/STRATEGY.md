@@ -205,13 +205,26 @@ Pengguna boleh mengecualikan sinyal dari statistik (`setups.excluded`, `excluded
 
 - **Sumber berita** (RSS publik, judul + tautan saja, artikel tidak disalin): Google News (pencarian gold/XAUUSD/Fed), Investing.com (komoditas, ekonomi, forex), Federal Reserve (rilis pers resmi), CNBC Economy, MarketWatch. Engine mode `news` berjalan tiap 15 menit; sumber yang gagal (mis. HTTP 503) dilewati dan dicatat di `engine_runs.stats.feeds`.
 - **Relevansi**: gerbang kata kunci (gold, XAU, Fed, FOMC, dollar, yields, CPI, NFP, PCE, inflation, …) + skor kemiripan embedding model `gte-small` bawaan Supabase Edge Runtime (gratis; disimpan di `news_items.relevance`; filter opsional via env `NEWS_MIN_RELEVANCE`, default 0 = tidak memfilter). Bila model tidak tersedia, cukup kata kunci.
-- **Label dampak ke emas** (`src/core/news.ts`, `classifyGoldImpact`) — aturan transparan, tiap aturan dihitung sekali:
-  - Mendukung emas (+2): pemangkasan suku bunga/dovish, USD melemah, imbal hasil turun / bond rally, inflasi melandai, data AS lemah, safe haven/geopolitik/krisis, pembelian bank sentral / arus masuk ETF.
-  - Menekan emas (−2): kenaikan suku bunga/hawkish/higher for longer, USD menguat, imbal hasil naik, inflasi panas, data AS kuat, ketegangan mereda (ceasefire/trade deal).
-  - Laporan harga emas naik/turun: ±1.
-  - Negasi sebelum frasa ("rules out rate cuts", "delays rate cut") membalik arah aturan tersebut dan ditulis di alasan.
-  - Label = tanda jumlah skor; skor 0 → Netral. Bila ada faktor dua arah → ditandai "faktor bertentangan".
-  - Keyakinan hanya **rendah** atau **sedang** (≥ 2 pendorong searah tanpa konflik). Tidak pernah ditampilkan sebagai persentase/probabilitas.
+- **Bias BUY/SELL XAUUSD per berita** (`src/core/news.ts`, `classifyGoldImpact`, v2 27 Okt 2026) — aturan transparan, bukan model AI:
+  - Pendorong dikelompokkan: **Fed** (hike/raise rates/December hike/hawkish ↔ cut/dovish/fewer hikes), **USD** (dollar firm/holds ground/stays bid/USD buying/DXY bullish ↔ dollar slips/wobbles/weak USD; juga dari pasangan mata uang: EUR/USD, GBP/USD, AUD/USD, pound, yen, ringgit, … turun = USD menguat, USD/JPY naik = USD menguat), **imbal hasil AS** (naik/near highs ↔ turun/near multi-week lows), **inflasi AS** (hot/firmer/red hot/3-year high/fastest since ↔ cools/softer), **data AS** (kuat ↔ lemah, consumer confidence slips, housing deteriorates), **geopolitik** (de-eskalasi/peace/diplomacy hopes/tensions ease dibaca lebih dulu ↔ war/escalation/West Asia risks/risk aversion), **permintaan** (bank sentral/ETF), **laporan harga emas**.
+  - Satu kelompok dihitung sekali (arah = jumlah aturan yang cocok di kelompok itu): bobot 2, kecuali kenaikan inflasi tanpa kata "hot" dan laporan harga emas (1). "usd" di dalam EUR/USD tidak dibaca sebagai USD (bug v1: "EUR/USD edges lower" dulu terbaca BUY).
+  - Negasi sebelum frasa ("rules out rate cuts", "fewer rate hikes") atau sesudahnya ("rate cuts not until 2028") membalik arah; "pause on / skip … hike", "… on hold" membatalkan frasa.
+  - Skor > 0 → **BUY**, < 0 → **SELL**, 0 → Netral. **Kekuatan**: kuat = ≥2 kelompok pendorong searah tanpa lawan (skor ≥4); sedang = ≥1 pendorong tanpa lawan (skor ≥2); lemah = hanya laporan harga, ada faktor berlawanan, atau judul berupa pertanyaan/pengandaian. Disimpan di `news_items.confidence` (kuat → `tinggi`, sedang → `sedang`, lemah → `rendah`; migrasi 36).
+  - Alasan per pendorong dalam bahasa Indonesia + **kutipan frasa pemicu** dari judul; faktor berlawanan ditulis terpisah.
+  - Data/topik negara lain (Korea, Brasil, Spanyol, Bosnia, Inggris, …; daftar diperluas) tidak dihitung sebagai CPI/PPI AS dan tidak memicu aturan data AS.
+  - Engine mengklasifikasi ulang berita tersimpan bila aturan berubah (hanya baris yang berbeda ditulis; `engine_runs.stats.feeds.relabeled`).
+  - Halaman News: rekap **arah berita 24 jam** = Σ arah × kekuatan (lemah 1, sedang 2, kuat 3), judul sindikasi mirip dihitung sekali; ≥ +3 condong BUY, ≤ −3 condong SELL, selain itu campuran. Filter "hanya BUY/SELL".
+- **Uji jujur (20–27 Okt 2026, 306 judul, reaksi XAU/USD M5 Twelve Data):**
+
+  | | v1 | v2 |
+  |---|---|---|
+  | Judul netral | 85% | 58% |
+  | Judul berarah yang dinilai (pasar buka) | 41 | 87 |
+  | Arah = gerak 60 menit sebelum terbit | 41% | 56% |
+  | Arah = gerak 60 menit sesudah terbit | 61% | 52% |
+  | Arah = gerak 4 jam sesudah terbit | 46% | 51% |
+
+  Kesimpulan: v2 membaca **arah fundamental** judul jauh lebih banyak dan lebih tepat secara makna (contoh perbaikan di `tests/news.test.ts`), tetapi **baik v1 maupun v2 tidak memprediksi gerak 1–4 jam** (semua ≈ 50%, sampel kecil; 61% v1 pada 41 judul tidak berbeda nyata dari 50%). Label berita = konteks, **bukan sinyal entry** — tertulis di halaman News.
 - **Keterbatasan jujur**: tanpa LLM generatif tidak ada ringkasan bahasa Indonesia baru; judul tampil dalam bahasa asli + penjelasan Indonesia dari templat aturan. Aturan kata kunci bisa keliru membaca konteks (sarkasme, berita non-AS); baca sumbernya.
 - **Kalender ekonomi**: feed mingguan publik ForexFactory (`ff_calendar_thisweek.json`), diambil maksimal sekali per jam; hanya USD dampak High & Medium. Feed ini **tidak memuat angka actual** — UI hanya menampilkan forecast/previous. Jadwal minggu depan baru tersedia saat sumber memperbarui kalender di awal minggu.
 - **Peringatan sebelum news besar**: event USD High dalam ambang menit per pengguna (`user_settings.news_alert_minutes`, default 30, 5–240) → push `⚠️ NEWS BESAR {N} menit lagi: {judul} (USD)` sekali per event per pengguna (dedupe `user_alerts`, kunci `news:<event>`); lonceng in-app 30 menit sebelumnya. Bisa dimatikan di Pengaturan → jenis notifikasi "News besar".

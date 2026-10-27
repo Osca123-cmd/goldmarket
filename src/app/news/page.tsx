@@ -33,10 +33,39 @@ function TopicChip({ topic }: { topic: KeyTopic | null }) {
 }
 
 const LABEL: Record<NewsRow["label"], { text: string; icon: string; cls: string }> = {
-  bullish: { text: "Bullish", icon: "▲", cls: "border-buy/50 bg-buy/10 text-buy" },
-  bearish: { text: "Bearish", icon: "▼", cls: "border-sell/50 bg-sell/10 text-sell" },
+  bullish: { text: "BUY", icon: "▲", cls: "border-buy/50 bg-buy/10 text-buy" },
+  bearish: { text: "SELL", icon: "▼", cls: "border-sell/50 bg-sell/10 text-sell" },
   neutral: { text: "Netral", icon: "●", cls: "border-muted/40 bg-muted/10 text-muted" },
 };
+// kolom confidence menyimpan kekuatan bias
+const STRENGTH: Record<NewsRow["confidence"], { text: string; w: number }> = { rendah: { text: "lemah", w: 1 }, sedang: { text: "sedang", w: 2 }, tinggi: { text: "kuat", w: 3 } };
+
+/** Judul sindikasi yang mirip (beda sufiks sumber) dihitung sekali. */
+const storyKey = (t: string) => t.toLowerCase().replace(/\s[|–-]\s.*$/, "").replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 8).join(" ");
+
+/** Rekap arah berita 24 jam: Σ arah × kekuatan (lemah 1, sedang 2, kuat 3). */
+function newsBias(rows: NewsRow[]) {
+  const seen = new Set<string>();
+  let buy = 0;
+  let sell = 0;
+  let net = 0;
+  for (const n of rows) {
+    if (n.label === "neutral") continue;
+    const k = storyKey(n.title);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const w = STRENGTH[n.confidence]?.w ?? 1;
+    if (n.label === "bullish") {
+      buy++;
+      net += w;
+    } else {
+      sell++;
+      net -= w;
+    }
+  }
+  const side = net >= 3 ? "BUY" : net <= -3 ? "SELL" : "CAMPURAN";
+  return { buy, sell, net, side } as const;
+}
 
 function NewsPage() {
   const { settings } = useAuth();
@@ -46,13 +75,14 @@ function NewsPage() {
   const { data: events, error: evErr } = useEconEvents();
   const [tab, setTab] = useState<"news" | "calendar">("news");
   const [filter, setFilter] = useState<"all" | KeyTopic>("all");
+  const [onlyBias, setOnlyBias] = useState(false);
 
   const next = useMemo(() => (events ?? []).find((e) => e.topic && Date.parse(e.time_at) > now), [events, now]);
   const day = useMemo(() => {
     const recent = (news ?? []).filter((n) => now - Date.parse(n.published_at ?? n.created_at) <= 86400000);
-    return { bullish: recent.filter((n) => n.label === "bullish").length, bearish: recent.filter((n) => n.label === "bearish").length, neutral: recent.filter((n) => n.label === "neutral").length };
+    return { ...newsBias(recent), neutral: recent.filter((n) => n.label === "neutral").length };
   }, [news, now]);
-  const shown = (news ?? []).filter((n) => filter === "all" || n.topic === filter);
+  const shown = (news ?? []).filter((n) => (filter === "all" || n.topic === filter) && (!onlyBias || n.label !== "neutral"));
 
   return (
     <div className="space-y-4">
@@ -67,7 +97,7 @@ function NewsPage() {
       </div>
 
       <div className="rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs text-warn">
-        Label Bullish/Bearish adalah <b>analisis otomatis berbasis aturan</b> (pendorong harga emas: suku bunga Fed, USD, imbal hasil, inflasi, data AS, geopolitik) — bukan saran investasi, bukan sinyal, dan bukan probabilitas. Judul ditampilkan dalam bahasa aslinya; baca sumber untuk konteks lengkap.
+        Label BUY/SELL XAUUSD adalah <b>arah fundamental menurut judul berita</b>, dibaca otomatis berbasis aturan (pendorong harga emas: suku bunga Fed, USD &amp; pasangan mata uang, imbal hasil, inflasi, data AS, geopolitik), lengkap dengan frasa pemicunya. Ini <b>bukan sinyal entry</b>: uji 20–27 Okt 2026 (87 judul berarah) menunjukkan arah ini <b>tidak memprediksi</b> gerak XAU 1–4 jam sesudah berita terbit (±52% benar, setara lempar koin) — berita sering terbit setelah harga bergerak. Pakai sebagai konteks, bukan pengganti setup. Bukan saran investasi.
       </div>
 
       <NextEvent ev={next ?? null} now={now} tz={tz} />
@@ -93,9 +123,19 @@ function NewsPage() {
             </div>
           }
         >
-          <p className="mb-3 text-xs text-muted">
-            24 jam terakhir: <span className="text-buy">{day.bullish} bullish</span> · <span className="text-sell">{day.bearish} bearish</span> · {day.neutral} netral (hitungan judul, bukan prediksi arah).
-          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line/70 bg-surface-2/50 p-3 text-xs">
+            <span className="text-muted">Arah berita 24 jam:</span>
+            <span className={cx("chip font-bold", day.side === "BUY" ? LABEL.bullish.cls : day.side === "SELL" ? LABEL.bearish.cls : LABEL.neutral.cls)}>
+              {day.side === "BUY" ? "▲ condong BUY" : day.side === "SELL" ? "▼ condong SELL" : "● campuran"}
+            </span>
+            <span className="text-muted">
+              <span className="text-buy">{day.buy} BUY</span> · <span className="text-sell">{day.sell} SELL</span> · {day.neutral} netral · skor {day.net > 0 ? "+" : ""}
+              {day.net} (lemah 1, sedang 2, kuat 3; judul sindikasi dihitung sekali)
+            </span>
+            <button className={cx("chip ml-auto", onlyBias ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted")} onClick={() => setOnlyBias((v) => !v)}>
+              {onlyBias ? "✓ " : ""}hanya BUY/SELL
+            </button>
+          </div>
           {newsErr && <p className="mb-2 text-xs text-sell">Gagal memuat berita: {newsErr}</p>}
           {news == null ? (
             <p className="text-sm text-muted">Memuat berita…</p>
@@ -123,9 +163,10 @@ function NewsCard({ n, now }: { n: NewsRow; now: number }) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
         <div className="flex shrink-0 flex-wrap gap-1 self-start sm:w-24 sm:flex-col sm:items-start">
           <TopicChip topic={n.topic} />
-          <span className={cx("chip font-bold", l.cls)} title="Dampak menurut aturan, untuk XAUUSD">
+          <span className={cx("chip font-bold", l.cls)} title="Arah fundamental XAUUSD menurut judul (berbasis aturan), bukan sinyal entry">
             <span className={cx(n.label !== "neutral" && "pulse-dot")}>{l.icon}</span> {l.text}
           </span>
+          {n.label !== "neutral" && <span className="chip border-line text-[10px] text-muted">bias {STRENGTH[n.confidence]?.text ?? n.confidence}</span>}
         </div>
         <div className="min-w-0 flex-1">
           <a href={n.link} target="_blank" rel="noopener noreferrer nofollow" className="block break-words font-semibold leading-snug text-ink hover:text-gold">
@@ -136,10 +177,11 @@ function NewsCard({ n, now }: { n: NewsRow; now: number }) {
           </div>
           {n.snippet && <p className="mt-1 break-words text-xs text-muted">{n.snippet}</p>}
           <p className="mt-2 break-words text-xs text-ink/90">{n.explanation}</p>
-          <div className="mt-2 flex flex-wrap gap-1">
-            <span className="chip border-line text-[10px] text-muted">keyakinan {n.confidence}</span>
-            {n.conflict && <span className="chip border-warn/40 text-[10px] text-warn">faktor bertentangan</span>}
-          </div>
+          {n.conflict && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              <span className="chip border-warn/40 text-[10px] text-warn">ada faktor berlawanan</span>
+            </div>
+          )}
         </div>
       </div>
     </li>

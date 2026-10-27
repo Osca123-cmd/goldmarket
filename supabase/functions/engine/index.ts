@@ -879,6 +879,29 @@ async function news(db: Db) {
   await db.from("news_items").delete().is("topic", null); // di luar FOMC/NFP/CPI/PPI
   await db.from("econ_events").delete().is("topic", null);
 
+  // berita tersimpan diklasifikasi ulang saat aturan berubah (hanya baris yang hasilnya berbeda ditulis)
+  const { data: stored } = await db.from("news_items").select("*");
+  const offTopicNews: string[] = [];
+  const relabel = [];
+  for (const row of stored ?? []) {
+    const topic = newsTopic(row.title, row.snippet);
+    if (!topic) {
+      offTopicNews.push(row.id);
+      continue;
+    }
+    const r = classifyGoldImpact(row.title, row.snippet);
+    const explanation = explainImpact(r);
+    if (row.label !== r.label || row.confidence !== r.confidence || row.conflict !== r.conflict || row.explanation !== explanation || row.topic !== topic) {
+      relabel.push({ ...row, topic, label: r.label, confidence: r.confidence, conflict: r.conflict, rule_ids: r.ruleIds, reasons: r.reasons, explanation });
+    }
+  }
+  if (offTopicNews.length) await db.from("news_items").delete().in("id", offTopicNews);
+  if (relabel.length) {
+    const { error } = await db.from("news_items").upsert(relabel, { onConflict: "id" });
+    if (error) throw new Error(`news_items relabel: ${error.message}`);
+  }
+  feeds.relabeled = relabel.length;
+
   // event kalender yang kini di luar fokus (mis. pidato anggota FOMC)
   const { data: evRows } = await db.from("econ_events").select("event_key,title");
   const offTopic = (evRows ?? []).filter((e) => !calendarTopic(e.title)).map((e) => e.event_key);

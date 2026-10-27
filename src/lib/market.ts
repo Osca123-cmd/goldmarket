@@ -270,7 +270,8 @@ export interface NewsRow {
   published_at: string | null;
   snippet: string;
   label: "bullish" | "bearish" | "neutral";
-  confidence: "rendah" | "sedang";
+  /** kekuatan bias: rendah = lemah, sedang = sedang, tinggi = kuat */
+  confidence: "rendah" | "sedang" | "tinggi";
   conflict: boolean;
   rule_ids: string[];
   reasons: string[];

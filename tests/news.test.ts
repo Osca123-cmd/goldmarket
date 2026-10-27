@@ -104,13 +104,62 @@ describe("relevance & classification", () => {
     expect(r.conflict).toBe(true);
     expect(r.label).toBe("bullish"); // pendorong (USD lemah, bond rally) > laporan harga turun
     expect(r.confidence).toBe("rendah");
-    expect(explainImpact(r)).toMatch(/bertentangan/);
+    expect(r.strength).toBe("lemah");
+    expect(explainImpact(r)).toMatch(/^BUY XAUUSD \(bias lemah\): .*Faktor berlawanan: Laporan harga: emas sedang melemah/);
   });
 
-  it("gives 'sedang' confidence for ≥2 drivers in the same direction", () => {
+  it("≥2 pendorong searah tanpa lawan → bias kuat (confidence tinggi)", () => {
     const r = classifyGoldImpact("Dollar slips and Treasury yields fall after weak jobs report");
-    expect(r).toMatchObject({ label: "bullish", confidence: "sedang", conflict: false });
+    expect(r).toMatchObject({ label: "bullish", bias: "BUY", strength: "kuat", confidence: "tinggi", conflict: false });
     expect(r.ruleIds).toEqual(expect.arrayContaining(["usd_weak", "yields_down", "us_data_weak"]));
+  });
+
+  // judul nyata 20–27 Okt 2026 yang dulu salah/netral
+  const v2: [string, "BUY" | "SELL" | "NETRAL"][] = [
+    ["EUR/USD Edges Lower Ahead of FOMC and ECB Rate Decisions", "SELL"], // dulu BUY: "usd" di EUR/USD terbaca USD turun
+    ["Sterling today: Pound slips as dollar holds firm ahead of Fed decision", "SELL"],
+    ["FX Daily: Dollar buying returns ahead of FOMC", "SELL"],
+    ["Dollar Index Keeps Firm Tone Ahead on FOMC Meeting", "SELL"],
+    ["Ringgit Opens Higher Against US Dollar Ahead Of FOMC Meeting", "BUY"],
+    ["Yen rallies as dollar wobbles toward Fed meeting", "BUY"],
+    ["British Pound edges higher vs weak USD ahead key FOMC event risk", "BUY"],
+    ["Federal Reserve to Hold Rates in October, Weigh December Hike", "SELL"],
+    ["Rabobank Forecast: Federal Reserve May Hike Another 25 Basis Points in December, With Rate Cuts Not Until 2028", "SELL"], // dulu BUY
+    ["AI debt trouble could help Fed's Warsh get his way with fewer rate hikes", "BUY"],
+    ["Federal Reserve Votes Unanimously to Raise Rates 25 Basis Points to 3.75%-4.00%", "SELL"],
+    ["Why Goldman Sachs expects Fed to skip October rate hike", "NETRAL"],
+    ["Fed holds interest rates steady as inflation hits 3-year high", "SELL"],
+    ["U.S. Treasury yields hover near multi-week lows ahead of Fed decision", "BUY"],
+    ["Gold slips ahead of Fed decision; Iran diplomacy hopes in focus", "SELL"],
+    ["Gold trades above $4,000 as FOMC decision keeps USD bulls on hold", "NETRAL"],
+    ["Australian Dollar bulls hesitant below one-month top before CPI, FOMC", "NETRAL"],
+    ["Gold price today: Gold prices down 5.2% YOY one week ahead of the Fed's rate decision", "NETRAL"],
+  ];
+  for (const [title, bias] of v2) {
+    it(`v2 ${bias}: ${title}`, () => expect(classifyGoldImpact(title).bias).toBe(bias));
+  }
+
+  it("de-eskalasi tidak terbaca sebagai risiko geopolitik", () => {
+    const r = classifyGoldImpact("Gold rebounds on easing geopolitical tensions and stalls: eyes on US CPI");
+    expect(r.ruleIds).toContain("risk_on");
+    expect(r.ruleIds).not.toContain("safe_haven");
+  });
+
+  it("alasan mengutip frasa pemicu; penjelasan diawali arah & kekuatan", () => {
+    const r = classifyGoldImpact("Forex Today: US Dollar holds ground ahead of mid-tier data releases, FOMC meeting");
+    expect(r).toMatchObject({ bias: "SELL", strength: "sedang", confidence: "sedang" });
+    expect(r.reasons[0]).toMatch(/^USD menguat .* — “US Dollar holds ground”$/);
+    expect(explainImpact(r)).toMatch(/^SELL XAUUSD \(bias sedang\): USD menguat/);
+  });
+
+  it("judul pertanyaan hanya bias lemah", () => {
+    expect(classifyGoldImpact("October 2026 FOMC Meeting Preview: Will the Fed Raise Rates Again?")).toMatchObject({ bias: "SELL", strength: "lemah" });
+  });
+
+  it("data harga negara lain bukan topik PPI/CPI AS", () => {
+    for (const t of ["Spain's producer prices up 18.3% in September", "Producer prices in Brazil rise 1.54% in September", "S. Korea's Producer Prices Rise for Second Month as Cabbage Prices Surge 42.9%", "Bosnia's industrial PPI up 5.5% y/y in Sept", "U.K. lumber producer prices match highest level in 12 months"]) expect(newsTopic(t)).toBeNull();
+    expect(newsTopic("US producer prices rise 6.3%, fastest since 2022")).toBe("PPI");
+    expect(newsTopic("U.S. producer prices post biggest annual gain since December 2022")).toBe("PPI");
   });
 
   it("negation flips the rule direction and is visible in the reason", () => {
