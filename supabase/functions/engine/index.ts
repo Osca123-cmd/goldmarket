@@ -27,6 +27,8 @@ import {
   runEngineCycle,
   DEFAULT_BT,
   evaluateOutcome,
+  aiOutcome,
+  aiPendingStatus,
   mergeFineCandles,
   readyTitle,
   classifyGoldImpact,
@@ -640,6 +642,40 @@ async function tick(db: Db, cfg: EngineConfig, pid: string) {
         timeframe: t.timeframe,
       });
     }
+  }
+
+  // ---- setup Analisa AI Gambar (ai_analyses; terpisah dari setups engine, satu TP tanpa BE) ----
+  const { data: aiRows } = await db.from("ai_analyses").select("id,tf,direction,entry_type,entry,sl,tp,rr,created_at,expires_at,entry_touched_at,status").in("status", ["pending", "entry_touched"]).limit(50);
+  const freshPrice = out.quality.quoteAgeSec <= cfg.thresholds.signalMaxAgeSec ? price : null;
+  for (const a of aiRows ?? []) {
+    const label = `${a.direction} XAUUSD ${a.tf} (AI gambar)`;
+    let touched = sec(a.entry_touched_at);
+    if (a.status === "pending") {
+      const p = aiPendingStatus({ direction: a.direction, entry: a.entry, sl: a.sl, tp: a.tp, createdSec: sec(a.created_at)!, expiresSec: sec(a.expires_at) ?? t0, candles: trackCandles, barSec: TF_SECONDS.M5, nowSec: t0 });
+      if (p.status === "pending") continue;
+      if (p.status !== "entry_touched") {
+        await db.from("ai_analyses").update({ status: p.status, outcome_note: p.reason, updated_at: new Date().toISOString() }).eq("id", a.id);
+        continue;
+      }
+      touched = p.touchedSec;
+      await db.from("ai_analyses").update({ status: "entry_touched", entry_touched_at: iso(touched), outcome: "open", updated_at: new Date().toISOString() }).eq("id", a.id);
+      notifRows.push({ kind: "entry_touched", dedupe_key: `ai-entry:${a.id}`, title: `🎯 ENTRY TERSENTUH — ${label}`, body: `Entry ${a.entry.toFixed(2)}, SL ${a.sl.toFixed(2)}, TP ${a.tp.toFixed(2)} (RR 1:${a.rr}). Satu TP, tanpa geser SL ke BE.`, severity: "info", setup_id: null, score: null, timeframe: a.tf });
+    }
+    if (touched == null) continue;
+    const r = aiOutcome({ direction: a.direction, entry: a.entry, sl: a.sl, tp: a.tp, entryTouchedAtSec: touched, candles: trackCandles, barSec: TF_SECONDS.M5, price: freshPrice, nowSec: t0, spec: cfg.spec });
+    if (r.outcome === "open") continue;
+    await db.from("ai_analyses").update({ status: "closed", outcome: r.outcome, outcome_pips: r.pips, outcome_r: r.r, outcome_at: r.closedAtSec ? iso(r.closedAtSec) : iso(t0), outcome_note: r.note, updated_at: new Date().toISOString() }).eq("id", a.id);
+    const tag = r.outcome === "win" ? "WIN" : r.outcome === "loss" ? "LOSS" : "TIMEOUT";
+    notifRows.push({
+      kind: "signal_result",
+      dedupe_key: `ai-result:${a.id}`,
+      title: `${tag} ${label} ${r.pips != null ? (r.pips > 0 ? "+" : "") + r.pips.toFixed(1) + " pips" : ""}${r.r != null ? ` (${r.r > 0 ? "+" : ""}${r.r}R)` : ""}`.trim(),
+      body: `${r.note} Hasil level setup menurut feed, bukan transaksi Anda.`,
+      severity: r.outcome === "win" ? "success" : r.outcome === "loss" ? "danger" : "warning",
+      setup_id: null,
+      score: null,
+      timeframe: a.tf,
+    });
   }
 
   // ---- news besar (kalender ekonomi): lonceng in-app 30 menit sebelumnya; push per pengguna di deliverPush ----

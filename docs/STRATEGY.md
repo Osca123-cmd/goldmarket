@@ -291,3 +291,13 @@ Data uji tidak pernah dipakai untuk memilih.
 - jumlah sinyal yang hilang hanya beberapa per minggu.
 
 Aturan ini belum bisa divalidasi di backtest karena kalender historis tidak tersedia gratis; ini aturan manajemen risiko, bukan klaim peningkatan win rate.
+
+## 14. Analisa AI Gambar (eksperimen, 30 Okt 2026)
+
+Halaman `/ai-chart/`: pengguna mengunggah screenshot chart XAUUSD, memilih TF di gambar (M5/M15/M30/H1/H4), lalu klik **Analisa Market**. Terpisah dari engine: hasil disimpan di `ai_analyses`, tidak masuk rekap, statistik, atau aturan satu-sinyal engine.
+
+- **Alur**: gambar → bucket privat `chart-uploads/<user>/…` → edge function `chart-ai` (JWT pengguna) → konteks angka dari data yang sama dengan engine (`market_snapshot` + candle `td_hybrid` TF gambar & TF pembanding, ±60/40 bar terakhir, ATR14, level S/R ≥2 sentuhan, high/low 120 bar; `buildAiContext`) → model vision dengan prompt `buildAiPrompt` (jawaban JSON) → `parseAiJson` → `validateAiSetup` → simpan.
+- **Model gratis**: Gemini (`GEMINI_MODEL`, default `gemini-2.5-flash`) lalu Groq (`GROQ_MODEL`, default Llama 4 Scout) bila gagal/kuota habis. Key di secrets Edge Function `GEMINI_API_KEY` / `GROQ_API_KEY`. Batas 15 analisa per pengguna per hari (WIB) agar muat kuota gratis; analisa yang gagal tidak dihitung.
+- **Validasi deterministik** (`src/core/aiSetup.ts`): gambar bukan chart → ditolak; `setup: null` → "Tidak ada setup"; market = harga live; limit yang sudah terlewati → market; limit ≤1,5× ATR TF gambar dari harga; urutan SL/entry/TP benar; jarak SL 0,5–3× ATR M15; **RR 1:5–1:6**, di luar itu dipertahankan hanya bila 1:4–1:8 **dan** TP ≤0,3 ATR dari level S/R atau high/low rentang, selain itu TP digeser ke 1:5 / 1:6 (dicatat di catatan). Angka dibulatkan 0,01.
+- **Pelacakan** (engine tick): limit menunggu maksimal 12 bar TF gambar; TP tersentuh sebelum entry → batal; lalu satu TP **tanpa BE**: WIN di TP (+RR), LOSS di SL (−1R), TIMEOUT setelah 3 hari (harga terakhir). Memakai candle M5 (+M1 bila sedang diambil untuk sinyal engine) dan `evaluateOutcome` dengan `tps=[tp,tp,tp]`. Lonceng: setup baru, entry tersentuh, hasil.
+- **Keterbatasan jujur**: model gratis lebih lemah dari model berbayar; jawaban bisa berbeda tiap klik; tidak bisa di-backtest, jadi kinerja hanya dari pelacakan maju (halaman menampilkan win rate vs win rate impas ±16,7% @1:5 / 14,3% @1:6). Harga broker di gambar bisa beda ±0,3–1 USD dari XAU/USD Twelve Data; level final memakai Twelve Data. Data free tier Google bisa dipakai untuk melatih model.

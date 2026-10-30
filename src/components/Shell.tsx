@@ -17,6 +17,7 @@ const NAV = [
   { href: "/opportunities/", label: "Live Opportunities", short: "Peluang", icon: "M13 2L3 14h8l-1 8 10-12h-8z" },
   { href: "/chart/", label: "Chart & Analysis", short: "Chart", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2" },
   { href: "/news/", label: "News AI", short: "News", icon: "M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5M8 16h3" },
+  { href: "/ai-chart/", label: "Analisa AI Gambar", short: "AI Gambar", icon: "M4 6h16v12H4zM4 15l4-4 3 3 4-5 5 6M8.5 9.5h.01" },
   { href: "/risk/", label: "Kalkulator Risiko", short: "Risiko", icon: "M12 3v18M5 8h14M7 16h10" },
   { href: "/journal/", label: "Jurnal Trading", short: "Jurnal", icon: "M5 4h11l3 3v13H5zM9 9h6M9 13h6M9 17h4" },
   { href: "/stats/", label: "Statistik", short: "Statistik", icon: "M4 19h16M7 16V9M12 16V5M17 16v-4" },

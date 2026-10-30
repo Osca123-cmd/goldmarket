@@ -299,6 +299,50 @@ export function useNews(limit = 60) {
   }, 120000);
 }
 
+export interface AiAnalysisRow {
+  id: string;
+  created_at: string;
+  image_path: string;
+  tf: "M5" | "M15" | "M30" | "H1" | "H4";
+  note: string;
+  provider: string | null;
+  model: string | null;
+  price: number | null;
+  bias: string | null;
+  summary: string | null;
+  structure: string[];
+  notes: string[];
+  status: "failed" | "no_setup" | "rejected" | "pending" | "entry_touched" | "expired" | "invalid" | "closed";
+  reject_reason: string | null;
+  direction: "BUY" | "SELL" | null;
+  entry_type: "market" | "limit" | null;
+  entry: number | null;
+  sl: number | null;
+  tp: number | null;
+  rr: number | null;
+  sl_pips: number | null;
+  tp_pips: number | null;
+  target_reason: string | null;
+  invalidation: string | null;
+  reasons: string[];
+  expires_at: string | null;
+  entry_touched_at: string | null;
+  outcome: "open" | "win" | "loss" | "timeout" | null;
+  outcome_pips: number | null;
+  outcome_r: number | null;
+  outcome_at: string | null;
+  outcome_note: string | null;
+}
+
+/** Riwayat Analisa AI Gambar milik pengguna (RLS), terbaru dulu. */
+export function useAiAnalyses(limit = 100) {
+  return useLive<AiAnalysisRow[]>(`ai:${limit}`, "ai_analyses", async () => {
+    const { data, error } = await supabase().from("ai_analyses").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw error;
+    return (data ?? []) as AiAnalysisRow[];
+  }, 60000);
+}
+
 /** Event kalender ekonomi dari 1 hari lalu ke depan (urut waktu). */
 export function useEconEvents() {
   return useLive<EconEventRow[]>("econ", "econ_events", async () => {

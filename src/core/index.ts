@@ -20,3 +20,4 @@ export * from "./outcome.ts";
 export * from "./news.ts";
 export * from "./features.ts";
 export * from "./delivery.ts";
+export * from "./aiSetup.ts";
