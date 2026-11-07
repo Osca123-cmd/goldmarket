@@ -46,6 +46,13 @@ import {
   newsTopic,
   newsBlackoutAt,
   eventBias,
+  closedAsOf,
+  twelveData,
+  usdBias,
+  usdNewsTone,
+  usdPriceTrend,
+  xauTrendSupport,
+  type MarketBias,
   predictionHit,
   releaseGroups,
   releaseKey,
@@ -1032,6 +1039,14 @@ async function news(db: Db) {
     }
   }
 
+  // ---- arah USD hari ini (gagal tidak menghentikan berita) ----
+  let usd: Record<string, unknown> | string;
+  try {
+    usd = await refreshUsdBias(db, t0);
+  } catch (e) {
+    usd = scrub((e as Error).message);
+  }
+
   // ---- riwayat prediksi arah rilis (gagal tidak menghentikan berita) ----
   let predictions: Record<string, number> | string;
   try {
@@ -1040,7 +1055,48 @@ async function news(db: Db) {
     predictions = scrub((e as Error).message);
   }
 
-  return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar, predictions };
+  return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar, usd, predictions };
+}
+
+/** Candle EUR/USD M15 (Twelve Data) untuk arah USD; diambil saat bar tersimpan terakhir ≥45 menit lalu (±2 kredit/jam). */
+const EURUSD_SOURCE = "td_eurusd";
+
+/**
+ * Arah USD hari ini: tren EUR/USD M15 & H1 (penentu), nada berita USD 24 jam & tren XAU M15/H1 (pendukung).
+ * Disimpan tiap run news ke usd_bias (riwayat 30 hari).
+ */
+async function refreshUsdBias(db: Db, t0: number) {
+  let fetched = 0;
+  if (tdKey && isMarketOpenBySchedule(t0 * 1000)) {
+    const { data: last } = await db.from("market_candles").select("ts").eq("source", EURUSD_SOURCE).eq("timeframe", "M15").order("ts", { ascending: false }).limit(1).maybeSingle();
+    const lastSec = sec(last?.ts);
+    if (lastSec == null || t0 - lastSec >= 45 * 60) {
+      const c = await twelveData(tdKey, fetch, "EUR/USD").fetchCandles("M15", lastSec == null ? 400 : 8, t0);
+      fetched = await upsertCandles(db, EURUSD_SOURCE, "M15", c);
+    }
+  }
+  const [eur, { data: newsRows }, { data: snap }, { data: ms }] = await Promise.all([
+    loadCandles(db, EURUSD_SOURCE, "M15", 400),
+    db.from("news_items").select("rule_ids").gte("published_at", iso(t0 - 86400)),
+    db.from("analysis_snapshots").select("timeframes").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("market_snapshot").select("price").eq("id", "current").maybeSingle(),
+  ]);
+  const closed = closedAsOf(eur, "M15", t0);
+  const tfs = (snap?.timeframes ?? {}) as Record<string, { bias?: MarketBias }>;
+  const b = usdBias(usdPriceTrend(closed), usdNewsTone(newsRows ?? []), xauTrendSupport({ M15: tfs.M15?.bias, H1: tfs.H1?.bias }));
+  const { error } = await db.from("usd_bias").insert({
+    usd_side: b.usd,
+    xau_side: b.xau,
+    strength: b.strength,
+    score: b.score,
+    parts: b.parts,
+    reasons: b.reasons,
+    eurusd: closed.at(-1)?.close ?? null,
+    xau_price: ms?.price ?? null,
+  });
+  if (error) throw new Error(`usd_bias: ${error.message}`);
+  await db.from("usd_bias").delete().lt("computed_at", iso(t0 - 30 * 86400));
+  return { fetched, bars: closed.length, usd: b.usd, xau: b.xau, strength: b.strength };
 }
 
 /**
@@ -1048,10 +1104,12 @@ async function news(db: Db) {
  * tanpa prediksi dihitung ulang dari data sebelum rilis (backfilled). 4 jam sesudah rilis dinilai dari reaksi XAU M5.
  */
 async function releasePredictions(db: Db, t0: number) {
-  const [{ data: evs }, { data: newsRows }, { data: preds }] = await Promise.all([
+  const [{ data: evs }, { data: newsRows }, { data: preds }, { data: usdNow }] = await Promise.all([
     db.from("econ_events").select("title,topic,time_at,forecast,previous").not("topic", "is", null).order("time_at"),
     db.from("news_items").select("label,confidence,topic,published_at,created_at").not("topic", "is", null),
     db.from("event_predictions").select("release_key"),
+    // arah USD terbaru (≤1 jam) = penentu utama prediksi rilis yang belum keluar
+    db.from("usd_bias").select("usd_side,strength").gte("computed_at", iso(t0 - 3600)).order("computed_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const known = new Set((preds ?? []).map((p) => p.release_key));
   let saved = 0;
@@ -1060,7 +1118,8 @@ async function releasePredictions(db: Db, t0: number) {
     const tSec = sec(g[0].time_at)!;
     const before = tSec > t0;
     if (!before && known.has(key)) continue; // sudah beku
-    const b = eventBias(g, newsRows ?? [], Math.min(t0, tSec) * 1000);
+    // rilis lama (dihitung ulang) tidak punya arah USD saat itu → ekspektasi & berita saja
+    const b = eventBias(g, newsRows ?? [], Math.min(t0, tSec) * 1000, before && usdNow ? { usd: usdNow.usd_side, strength: usdNow.strength } : null);
     const { error } = await db.from("event_predictions").upsert({
       release_key: key,
       topic: g[0].topic,
@@ -1073,6 +1132,7 @@ async function releasePredictions(db: Db, t0: number) {
       scenario: b.scenario?.slice(0, 400) ?? null,
       predicted_at: iso(before ? t0 : tSec),
       backfilled: !before,
+      usd_side: b.usd,
     });
     if (error) throw new Error(`event_predictions: ${error.message}`);
     saved++;
@@ -1278,7 +1338,8 @@ Deno.serve(async (req) => {
   const { data: st } = await db.from("engine_state").select("config").eq("id", "engine").maybeSingle();
   const cfg = mergeConfig(st?.config ?? null);
   try {
-    tdKey = mode === "news" ? "" : await loadTdKey(db);
+    // mode news juga butuh key: candle EUR/USD untuk arah USD
+    tdKey = await loadTdKey(db);
     const pid = providerId(st?.config);
     const result = mode === "backtest" ? await backtest(db, cfg, pid) : mode === "news" ? await news(db) : await tick(db, cfg, pid);
     await db.from("engine_runs").update({ finished_at: new Date().toISOString(), ok: !("error" in result && result.error), stats: result }).eq("id", run?.id);

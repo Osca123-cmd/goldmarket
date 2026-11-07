@@ -78,13 +78,13 @@ export function parseTwelveDataQuote(json: unknown): Quote {
   };
 }
 
-export function twelveData(apiKey: string, fetchFn: Fetch = fetch): MarketProvider {
+export function twelveData(apiKey: string, fetchFn: Fetch = fetch, symbol = "XAU/USD"): MarketProvider {
   const base = "https://api.twelvedata.com";
-  const sym = encodeURIComponent("XAU/USD");
+  const sym = encodeURIComponent(symbol);
   return {
     id: "twelvedata",
-    label: "Twelve Data — XAU/USD",
-    symbol: "XAU/USD",
+    label: `Twelve Data — ${symbol}`,
+    symbol,
     isDemo: false,
     proxyNote: null,
     supportsBidAsk: false,

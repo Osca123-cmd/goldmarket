@@ -9,6 +9,7 @@
  * actual vs forecast, jadi skenario rilis selalu ditampilkan di samping perkiraan.
  */
 import { calendarTopic, type KeyTopic } from "./news.ts";
+import type { UsdSide } from "./usdBias.ts";
 
 export type EventBiasSide = "BUY" | "SELL" | "NETRAL";
 
@@ -29,6 +30,8 @@ export interface NewsLike {
 
 export interface EventBias {
   side: EventBiasSide;
+  /** arah USD yang dipakai (penentu utama bila tersedia); XAUUSD = kebalikannya */
+  usd: UsdSide;
   strength: "lemah" | "sedang" | null;
   score: number;
   reasons: string[];
@@ -78,7 +81,7 @@ const NEWS_W: Record<NewsLike["confidence"], number> = { rendah: 1, sedang: 2, t
  * Perkiraan arah untuk satu paket rilis (event berwaktu sama, mis. NFP + pengangguran + upah).
  * `news` = berita tersimpan (semua topik; disaring ke topik paket & 72 jam sebelum rilis).
  */
-export function eventBias(events: EventLike[], news: NewsLike[] = [], nowMs = Date.now()): EventBias {
+export function eventBias(events: EventLike[], news: NewsLike[] = [], nowMs = Date.now(), usd?: { usd: UsdSide; strength: string | null } | null): EventBias {
   const reasons: string[] = [];
   let exp = 0;
   let scenario: string | null = null;
@@ -131,13 +134,34 @@ export function eventBias(events: EventLike[], news: NewsLike[] = [], nowMs = Da
   if (buy + sell) reasons.push(`Berita ${[...topics].join("/")} 72 jam: ${sell} SELL vs ${buy} BUY (skor ${net > 0 ? "+" : ""}${net}) → ${newsScore ? `condong ${side(newsScore)}` : "belum tegas"}.`);
   else reasons.push(`Belum ada berita ${[...topics].join("/")} berarah dalam 72 jam terakhir.`);
 
+  // USD hari ini = penentu utama (permintaan pengguna 7 Nov); ekspektasi & berita rilis hanya pendukung
+  if (usd && usd.usd !== "NETRAL") {
+    const xau = usd.usd === "BULLISH" ? -1 : 1;
+    const support = expScore + newsScore;
+    const agree = support !== 0 && Math.sign(support) === xau;
+    const oppose = support !== 0 && !agree;
+    return {
+      side: side(xau),
+      usd: usd.usd,
+      strength: agree ? "sedang" : "lemah",
+      score: 2 * xau + support,
+      reasons: [
+        `USD hari ini: ${usd.usd === "BULLISH" ? "Bullish USD" : "Bearish USD"}${usd.strength ? ` (${usd.strength})` : ""} — penentu utama.`,
+        ...reasons,
+        `Kesimpulan: ${usd.usd === "BULLISH" ? "USD menguat" : "USD melemah"} ${agree ? "dan data rilis mendukung" : oppose ? "tetapi data rilis berlawanan — hati-hati" : "tanpa dukungan data rilis"} → XAUUSD ${side(xau)}.`,
+      ],
+      scenario,
+    };
+  }
+
   const score = expScore + newsScore;
   const agree = expScore !== 0 && newsScore !== 0 && Math.sign(expScore) === Math.sign(newsScore);
   return {
     side: side(score),
+    usd: score > 0 ? "BEARISH" : score < 0 ? "BULLISH" : "NETRAL",
     strength: score === 0 ? null : agree && Math.abs(score) >= 3 ? "sedang" : "lemah",
     score,
-    reasons,
+    reasons: usd ? ["Arah USD hari ini belum jelas → memakai ekspektasi & berita rilis saja.", ...reasons] : reasons,
     scenario,
   };
 }

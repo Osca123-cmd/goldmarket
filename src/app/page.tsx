@@ -9,8 +9,8 @@ import { useEffect, useState } from "react";
 import { Card, Disclaimer, Empty, StatusBadge, ago, cx, fmt, fmtTime, useNow } from "@/components/ui";
 import { LogoMark } from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
-import { effectiveStatus, fetchCandles, isActiveSignal, isRunningSignal, useEconEvents, useNews } from "@/lib/market";
-import { NextEvent } from "@/components/NextEvent";
+import { effectiveStatus, fetchCandles, isActiveSignal, isRunningSignal, useEconEvents, useNews, useUsdBias } from "@/lib/market";
+import { NextEvent, UsdBiasCard } from "@/components/NextEvent";
 import { ANALYSIS_STATUS_LABEL } from "@/core/analysis";
 
 export default function DashboardPage() {
@@ -128,13 +128,17 @@ function Dashboard() {
   const active = setups.filter((s) => s.eligible && isActiveSignal(s) && (isRunningSignal(s) || s.score >= (settings?.min_score?.[s.timeframe] ?? 60)));
   const { data: events } = useEconEvents();
   const { data: news } = useNews();
+  const { data: usd } = useUsdBias();
   const nextEvent = (events ?? []).find((e) => e.topic && Date.parse(e.time_at) > now) ?? null;
 
   return (
     <div className="space-y-4">
+      <Link href="/news/" className="block">
+        <UsdBiasCard b={usd} now={now} compact />
+      </Link>
       {nextEvent && Date.parse(nextEvent.time_at) - now <= 24 * 3600 * 1000 && (
         <Link href="/news/" className="block">
-          <NextEvent ev={nextEvent} now={now} tz={tz} events={events} news={news} compact />
+          <NextEvent ev={nextEvent} now={now} tz={tz} events={events} news={news} usd={usd} compact />
         </Link>
       )}
       <div className="grid gap-4 lg:grid-cols-3">

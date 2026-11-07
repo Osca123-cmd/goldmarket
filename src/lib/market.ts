@@ -363,6 +363,29 @@ export interface EventPredictionRow {
   hit_15m: boolean | null;
   hit_60m: boolean | null;
   hit_240m: boolean | null;
+  usd_side: "BULLISH" | "BEARISH" | "NETRAL" | null;
+}
+
+export interface UsdBiasRow {
+  id: number;
+  computed_at: string;
+  usd_side: "BULLISH" | "BEARISH" | "NETRAL";
+  xau_side: "BUY" | "SELL" | "NETRAL";
+  strength: "lemah" | "sedang" | "kuat" | null;
+  score: number;
+  parts: { price: number; news: number; xau: number };
+  reasons: string[];
+  eurusd: number | null;
+  xau_price: number | null;
+}
+
+/** Arah USD terbaru (engine mode news, tiap 15 menit). */
+export function useUsdBias() {
+  return useLive<UsdBiasRow | null>("usd_bias", "usd_bias", async () => {
+    const { data, error } = await supabase().from("usd_bias").select("*").order("computed_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    return (data ?? null) as UsdBiasRow | null;
+  }, 120000);
 }
 
 /** Riwayat prediksi arah rilis FOMC/NFP/CPI/PPI, terbaru dulu (termasuk rilis mendatang). */

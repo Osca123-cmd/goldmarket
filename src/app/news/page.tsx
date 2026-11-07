@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
 import { Card, Empty, Stat, ago, cx, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { useEconEvents, useEventPredictions, useNews, type EconEventRow, type EventPredictionRow, type KeyTopic, type NewsRow } from "@/lib/market";
-import { EventBiasChip, NextEvent, countdown, dayKey, hm, releaseOf } from "@/components/NextEvent";
+import { useEconEvents, useEventPredictions, useNews, useUsdBias, type EconEventRow, type EventPredictionRow, type KeyTopic, type NewsRow, type UsdBiasRow } from "@/lib/market";
+import { EventBiasChip, NextEvent, UsdBiasCard, countdown, dayKey, hm, releaseOf } from "@/components/NextEvent";
 import { eventBias } from "@/core/eventBias";
 
 export default function Page() {
@@ -74,6 +74,7 @@ function NewsPage() {
   const now = useNow(1000);
   const { data: news, error: newsErr } = useNews();
   const { data: events, error: evErr } = useEconEvents();
+  const { data: usd } = useUsdBias();
   const [tab, setTab] = useState<"news" | "calendar" | "history">("news");
   const [filter, setFilter] = useState<"all" | KeyTopic>("all");
   const [onlyBias, setOnlyBias] = useState(false);
@@ -101,7 +102,9 @@ function NewsPage() {
         Label BUY/SELL XAUUSD adalah <b>arah fundamental menurut judul berita</b>, dibaca otomatis berbasis aturan (pendorong harga emas: suku bunga Fed, USD &amp; pasangan mata uang, imbal hasil, inflasi, data AS, geopolitik), lengkap dengan frasa pemicunya. Ini <b>bukan sinyal entry</b>: uji 20–27 Okt 2026 (87 judul berarah) menunjukkan arah ini <b>tidak memprediksi</b> gerak XAU 1–4 jam sesudah berita terbit (±52% benar, setara lempar koin) — berita sering terbit setelah harga bergerak. Pakai sebagai konteks, bukan pengganti setup. Bukan saran investasi.
       </div>
 
-      <NextEvent ev={next ?? null} now={now} tz={tz} events={events} news={news} />
+      <UsdBiasCard b={usd} now={now} />
+
+      <NextEvent ev={next ?? null} now={now} tz={tz} events={events} news={news} usd={usd} />
 
       <div className="flex gap-2">
         {(["news", "calendar", "history"] as const).map((t) => (
@@ -151,7 +154,7 @@ function NewsPage() {
           )}
         </Card>
       ) : tab === "calendar" ? (
-        <Calendar events={events} news={news} error={evErr} now={now} tz={tz} />
+        <Calendar events={events} news={news} usd={usd} error={evErr} now={now} tz={tz} />
       ) : (
         <PredictionHistory now={now} tz={tz} />
       )}
@@ -191,7 +194,8 @@ function NewsCard({ n, now }: { n: NewsRow; now: number }) {
   );
 }
 
-function Calendar({ events, news, error, now, tz }: { events: EconEventRow[] | null; news: NewsRow[] | null; error: string | null; now: number; tz: string }) {
+function Calendar({ events, news, usd, error, now, tz }: { events: EconEventRow[] | null; news: NewsRow[] | null; usd: UsdBiasRow | null; error: string | null; now: number; tz: string }) {
+  const usdFresh = usd && now - Date.parse(usd.computed_at) <= 3600_000 ? { usd: usd.usd_side, strength: usd.strength } : null;
   // satu perkiraan arah per paket rilis (waktu & topik sama), ditampilkan di baris pertamanya
   const firstOfRelease = new Set<string>();
   const seen = new Set<string>();
@@ -236,7 +240,7 @@ function Calendar({ events, news, error, now, tz }: { events: EconEventRow[] | n
                       <span className={cx("num w-full text-xs sm:w-24 sm:text-right", ms > 0 ? "text-gold" : "text-muted")}>{countdown(ms)}</span>
                       {ms > 0 && firstOfRelease.has(e.event_key) && (
                         <span className="flex w-full flex-wrap items-center gap-2 text-xs text-muted">
-                          Perkiraan arah: <EventBiasChip b={eventBias(releaseOf(e, events), news ?? [], now)} />
+                          Perkiraan arah: <EventBiasChip b={eventBias(releaseOf(e, events), news ?? [], now, usdFresh)} />
                         </span>
                       )}
                     </li>
@@ -312,7 +316,8 @@ function PredictionHistory({ now, tz }: { now: number; tz: string }) {
                     {dayKey(r.time_at, tz)} · {hm(r.time_at, tz)}
                   </span>
                   <TopicChip topic={r.topic} />
-                  <EventBiasChip b={{ side: r.side, strength: r.strength, score: r.score, reasons: r.reasons, scenario: r.scenario }} />
+                  {r.usd_side && r.usd_side !== "NETRAL" && <span className={cx("text-xs font-semibold", r.usd_side === "BULLISH" ? "text-buy" : "text-sell")}>{r.usd_side === "BULLISH" ? "Bullish USD" : "Bearish USD"} →</span>}
+                  <EventBiasChip b={{ side: r.side, usd: r.usd_side ?? "NETRAL", strength: r.strength, score: r.score, reasons: r.reasons, scenario: r.scenario }} />
                   {r.backfilled && <span className="chip border-line text-[10px] text-muted">dihitung ulang</span>}
                   <span className="ml-auto text-xs text-muted">
                     {upcoming ? `rilis ${countdown(Date.parse(r.time_at) - now)} lagi` : r.status === "pending" ? "menunggu 4 jam sesudah rilis" : r.status === "no_data" ? "data harga tidak tersedia" : `harga sebelum rilis ${r.base_price?.toFixed(2)}`}
