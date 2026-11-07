@@ -142,6 +142,48 @@ export function eventBias(events: EventLike[], news: NewsLike[] = [], nowMs = Da
   };
 }
 
+/** Kunci unik paket rilis: waktu ISO (UTC) + topik. */
+export function releaseKey(group: EventLike[]): string {
+  const e = group[0];
+  return `${new Date(e.time_at).toISOString()}|${calendarTopic(e.title) ?? e.title}`;
+}
+
+/** Horizon penilaian prediksi (menit sesudah rilis); 60 menit = penilaian utama. */
+export const RELEASE_HORIZONS = [15, 60, 240] as const;
+
+export interface ReleaseMoves {
+  base: number;
+  /** perubahan harga XAU (USD) sesudah 15 / 60 / 240 menit */
+  m15: number;
+  m60: number;
+  m240: number;
+}
+
+/**
+ * Reaksi harga sesudah rilis dari candle M5 (`time` = awal bar): harga dasar = close bar terakhir yang selesai
+ * sebelum rilis; harga +X menit = close bar terakhir yang selesai paling lambat rilis + X. Null bila data belum lengkap.
+ */
+export function releaseMoves(candles: { time: number; close: number }[], releaseSec: number, barSec = 300): ReleaseMoves | null {
+  const closeBy = (t: number) => {
+    let c: number | null = null;
+    for (const b of candles) if (b.time + barSec <= t) c = b.close;
+    return c;
+  };
+  const lastEnd = candles.length ? candles[candles.length - 1].time + barSec : -Infinity;
+  if (lastEnd < releaseSec + 240 * 60) return null;
+  const base = closeBy(releaseSec);
+  // bar sesudah rilis harus ada (pasar buka), bukan sekadar bar lama terakhir
+  if (base == null || !candles.some((b) => b.time >= releaseSec && b.time < releaseSec + 15 * 60)) return null;
+  const at = (min: number) => Math.round((closeBy(releaseSec + min * 60)! - base) * 100) / 100;
+  return { base, m15: at(15), m60: at(60), m240: at(240) };
+}
+
+/** Prediksi benar bila arah harga searah prediksi; NETRAL atau harga tidak bergerak → tidak dinilai (null). */
+export function predictionHit(side: EventBiasSide, move: number): boolean | null {
+  if (side === "NETRAL" || move === 0) return null;
+  return (side === "BUY" ? 1 : -1) * move > 0;
+}
+
 /** Kelompokkan event berwaktu & topik sama menjadi paket rilis. */
 export function releaseGroups<T extends EventLike>(events: T[]): T[][] {
   const m = new Map<string, T[]>();

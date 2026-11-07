@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/Shell";
-import { Card, Empty, ago, cx, useNow } from "@/components/ui";
+import { Card, Empty, Stat, ago, cx, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { useEconEvents, useNews, type EconEventRow, type KeyTopic, type NewsRow } from "@/lib/market";
+import { useEconEvents, useEventPredictions, useNews, type EconEventRow, type EventPredictionRow, type KeyTopic, type NewsRow } from "@/lib/market";
 import { EventBiasChip, NextEvent, countdown, dayKey, hm, releaseOf } from "@/components/NextEvent";
 import { eventBias } from "@/core/eventBias";
 
@@ -74,7 +74,7 @@ function NewsPage() {
   const now = useNow(1000);
   const { data: news, error: newsErr } = useNews();
   const { data: events, error: evErr } = useEconEvents();
-  const [tab, setTab] = useState<"news" | "calendar">("news");
+  const [tab, setTab] = useState<"news" | "calendar" | "history">("news");
   const [filter, setFilter] = useState<"all" | KeyTopic>("all");
   const [onlyBias, setOnlyBias] = useState(false);
 
@@ -104,9 +104,9 @@ function NewsPage() {
       <NextEvent ev={next ?? null} now={now} tz={tz} events={events} news={news} />
 
       <div className="flex gap-2">
-        {(["news", "calendar"] as const).map((t) => (
+        {(["news", "calendar", "history"] as const).map((t) => (
           <button key={t} className={cx("rounded-xl border px-4 py-2 text-sm font-semibold", tab === t ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-muted hover:text-ink")} onClick={() => setTab(t)}>
-            {t === "news" ? "Berita" : "Kalender"}
+            {t === "news" ? "Berita" : t === "calendar" ? "Kalender" : "Riwayat Prediksi"}
           </button>
         ))}
       </div>
@@ -150,8 +150,10 @@ function NewsPage() {
             </ul>
           )}
         </Card>
-      ) : (
+      ) : tab === "calendar" ? (
         <Calendar events={events} news={news} error={evErr} now={now} tz={tz} />
+      ) : (
+        <PredictionHistory now={now} tz={tz} />
       )}
     </div>
   );
@@ -244,6 +246,103 @@ function Calendar({ events, news, error, now, tz }: { events: EconEventRow[] | n
             </div>
           ))}
         </div>
+      )}
+    </Card>
+  );
+}
+
+const MOVE_KEYS = [
+  { k: "15m", label: "15 mnt" },
+  { k: "60m", label: "1 jam" },
+  { k: "240m", label: "4 jam" },
+] as const;
+
+function MoveCell({ move, hit }: { move: number | null; hit: boolean | null }) {
+  if (move == null) return <span className="text-muted">—</span>;
+  return (
+    <span className={cx("num", hit === true ? "text-buy" : hit === false ? "text-sell" : "text-muted")}>
+      {move > 0 ? "+" : ""}
+      {move.toFixed(1)} {hit === true ? "✓" : hit === false ? "✗" : ""}
+    </span>
+  );
+}
+
+/** Riwayat prediksi arah rilis vs reaksi XAU sesudah rilis — untuk menilai apakah perkiraannya berguna. */
+function PredictionHistory({ now, tz }: { now: number; tz: string }) {
+  const { data: rows, error } = useEventPredictions();
+  const stats = useMemo(() => {
+    const done = (rows ?? []).filter((r) => r.status === "done");
+    const acc = (k: "hit_15m" | "hit_60m" | "hit_240m") => {
+      const judged = done.filter((r) => r[k] != null);
+      const ok = judged.filter((r) => r[k]).length;
+      return { n: judged.length, ok, pct: judged.length ? (100 * ok) / judged.length : null };
+    };
+    const live = done.filter((r) => !r.backfilled);
+    return { done: done.length, neutral: done.filter((r) => r.side === "NETRAL").length, a15: acc("hit_15m"), a60: acc("hit_60m"), a240: acc("hit_240m"), live: live.length };
+  }, [rows]);
+  const pct = (a: { n: number; ok: number; pct: number | null }) => (a.pct == null ? "—" : `${a.pct.toFixed(0)}%`);
+
+  return (
+    <Card title="Riwayat prediksi arah rilis (FOMC · NFP · CPI · PPI)">
+      <p className="mb-3 text-xs text-muted">
+        Prediksi diperbarui tiap 15 menit sampai waktu rilis lalu <b>dibekukan</b>; 4 jam sesudah rilis dinilai dari gerak XAU/USD (harga sebelum rilis → 15 menit, 1 jam, 4 jam). ✓ = harga bergerak searah prediksi, ✗ = berlawanan. NETRAL tidak dinilai. Penilaian utama: 1 jam.
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="Rilis dinilai" value={stats.done} sub={`${stats.neutral} netral · ${stats.live} prediksi live`} />
+        <Stat label="Benar 15 mnt" value={pct(stats.a15)} sub={`${stats.a15.ok}/${stats.a15.n}`} />
+        <Stat label="Benar 1 jam" value={pct(stats.a60)} sub={`${stats.a60.ok}/${stats.a60.n}`} tone="gold" />
+        <Stat label="Benar 4 jam" value={pct(stats.a240)} sub={`${stats.a240.ok}/${stats.a240.n}`} />
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        Butuh puluhan rilis (±4–6 per bulan) sebelum angka ini berarti; di bawah ±60% dari 20+ rilis = tidak lebih baik dari lempar koin. Rilis bertanda <i>dihitung ulang</i> dibuat sesudah rilis dari data yang tersedia sebelum rilis (rilis sebelum fitur ini ada).
+      </p>
+      {error && <p className="mt-2 text-xs text-sell">Gagal memuat riwayat: {error}</p>}
+      {rows == null ? (
+        <p className="mt-3 text-sm text-muted">Memuat…</p>
+      ) : rows.length === 0 ? (
+        <Empty title="Belum ada riwayat">Riwayat mulai terisi pada run berita berikutnya (tiap 15 menit).</Empty>
+      ) : (
+        <ul className="mt-3 divide-y divide-line/60 rounded-xl border border-line/70">
+          {rows.map((r) => {
+            const upcoming = Date.parse(r.time_at) > now;
+            return (
+              <li key={r.release_key} className="space-y-1 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="num text-xs text-muted">
+                    {dayKey(r.time_at, tz)} · {hm(r.time_at, tz)}
+                  </span>
+                  <TopicChip topic={r.topic} />
+                  <EventBiasChip b={{ side: r.side, strength: r.strength, score: r.score, reasons: r.reasons, scenario: r.scenario }} />
+                  {r.backfilled && <span className="chip border-line text-[10px] text-muted">dihitung ulang</span>}
+                  <span className="ml-auto text-xs text-muted">
+                    {upcoming ? `rilis ${countdown(Date.parse(r.time_at) - now)} lagi` : r.status === "pending" ? "menunggu 4 jam sesudah rilis" : r.status === "no_data" ? "data harga tidak tersedia" : `harga sebelum rilis ${r.base_price?.toFixed(2)}`}
+                  </span>
+                </div>
+                <div className="break-words text-xs text-muted">{r.events.map((e) => `${e.title} (F ${e.forecast ?? "—"} · P ${e.previous ?? "—"})`).join(" · ")}</div>
+                {r.status === "done" && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    {MOVE_KEYS.map(({ k, label }) => (
+                      <span key={k}>
+                        <span className="text-muted">{label}: </span>
+                        <MoveCell move={r[`move_${k}`]} hit={r[`hit_${k}`]} />
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted">Alasan prediksi</summary>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                    {r.reasons.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                  {r.scenario && <p className="mt-1">{r.scenario}</p>}
+                  <p className="mt-1 text-muted">Dibekukan {ago(r.predicted_at, now)}.</p>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Card>
   );

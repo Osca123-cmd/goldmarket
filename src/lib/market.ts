@@ -343,6 +343,37 @@ export function useAiAnalyses(limit = 100) {
   }, 60000);
 }
 
+export interface EventPredictionRow {
+  release_key: string;
+  topic: KeyTopic;
+  time_at: string;
+  events: { title: string; forecast: string | null; previous: string | null }[];
+  side: "BUY" | "SELL" | "NETRAL";
+  strength: "lemah" | "sedang" | null;
+  score: number;
+  reasons: string[];
+  scenario: string | null;
+  predicted_at: string;
+  backfilled: boolean;
+  status: "pending" | "done" | "no_data";
+  base_price: number | null;
+  move_15m: number | null;
+  move_60m: number | null;
+  move_240m: number | null;
+  hit_15m: boolean | null;
+  hit_60m: boolean | null;
+  hit_240m: boolean | null;
+}
+
+/** Riwayat prediksi arah rilis FOMC/NFP/CPI/PPI, terbaru dulu (termasuk rilis mendatang). */
+export function useEventPredictions() {
+  return useLive<EventPredictionRow[]>("event_predictions", "event_predictions", async () => {
+    const { data, error } = await supabase().from("event_predictions").select("*").order("time_at", { ascending: false }).limit(200);
+    if (error) throw error;
+    return (data ?? []) as EventPredictionRow[];
+  }, 300000);
+}
+
 /** Event kalender ekonomi dari 1 hari lalu ke depan (urut waktu). */
 export function useEconEvents() {
   return useLive<EconEventRow[]>("econ", "econ_events", async () => {

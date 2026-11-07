@@ -45,6 +45,11 @@ import {
   calendarTopic,
   newsTopic,
   newsBlackoutAt,
+  eventBias,
+  predictionHit,
+  releaseGroups,
+  releaseKey,
+  releaseMoves,
   type Candle,
   type EngineConfig,
   type FeedStatus,
@@ -1027,7 +1032,80 @@ async function news(db: Db) {
     }
   }
 
-  return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar };
+  // ---- riwayat prediksi arah rilis (gagal tidak menghentikan berita) ----
+  let predictions: Record<string, number> | string;
+  try {
+    predictions = await releasePredictions(db, t0);
+  } catch (e) {
+    predictions = scrub((e as Error).message);
+  }
+
+  return { feeds, candidates: fresh.length, inserted: rows.length, embedded, embedder: getEmbedder() ? "gte-small" : "keyword-only", calendar, predictions };
+}
+
+/**
+ * Prediksi arah per paket rilis FOMC/NFP/CPI/PPI: diperbarui tiap run sampai waktu rilis (lalu beku), rilis lama
+ * tanpa prediksi dihitung ulang dari data sebelum rilis (backfilled). 4 jam sesudah rilis dinilai dari reaksi XAU M5.
+ */
+async function releasePredictions(db: Db, t0: number) {
+  const [{ data: evs }, { data: newsRows }, { data: preds }] = await Promise.all([
+    db.from("econ_events").select("title,topic,time_at,forecast,previous").not("topic", "is", null).order("time_at"),
+    db.from("news_items").select("label,confidence,topic,published_at,created_at").not("topic", "is", null),
+    db.from("event_predictions").select("release_key"),
+  ]);
+  const known = new Set((preds ?? []).map((p) => p.release_key));
+  let saved = 0;
+  for (const g of releaseGroups(evs ?? [])) {
+    const key = releaseKey(g);
+    const tSec = sec(g[0].time_at)!;
+    const before = tSec > t0;
+    if (!before && known.has(key)) continue; // sudah beku
+    const b = eventBias(g, newsRows ?? [], Math.min(t0, tSec) * 1000);
+    const { error } = await db.from("event_predictions").upsert({
+      release_key: key,
+      topic: g[0].topic,
+      time_at: iso(tSec),
+      events: g.map((e) => ({ title: e.title, forecast: e.forecast, previous: e.previous })),
+      side: b.side,
+      strength: b.strength,
+      score: b.score,
+      reasons: b.reasons,
+      scenario: b.scenario?.slice(0, 400) ?? null,
+      predicted_at: iso(before ? t0 : tSec),
+      backfilled: !before,
+    });
+    if (error) throw new Error(`event_predictions: ${error.message}`);
+    saved++;
+  }
+
+  const { data: snap } = await db.from("market_snapshot").select("source").eq("id", "current").maybeSingle();
+  const { data: due } = await db.from("event_predictions").select("release_key,time_at,side").eq("status", "pending").lte("time_at", iso(t0 - 245 * 60));
+  let evaluated = 0;
+  for (const p of due ?? []) {
+    const tSec = sec(p.time_at)!;
+    const { data: bars } = snap?.source
+      ? await db.from("market_candles").select("ts,close").eq("source", snap.source).eq("timeframe", "M5").gte("ts", iso(tSec - 1800)).lte("ts", iso(tSec + 245 * 60)).order("ts")
+      : { data: [] };
+    const m = releaseMoves((bars ?? []).map((b) => ({ time: sec(b.ts)!, close: b.close })), tSec);
+    if (!m) {
+      // pasar tutup / candle hilang: berhenti mencoba setelah 2 hari
+      if (t0 - tSec > 2 * 86400) await db.from("event_predictions").update({ status: "no_data", evaluated_at: iso(t0) }).eq("release_key", p.release_key);
+      continue;
+    }
+    await db.from("event_predictions").update({
+      status: "done",
+      base_price: m.base,
+      move_15m: m.m15,
+      move_60m: m.m60,
+      move_240m: m.m240,
+      hit_15m: predictionHit(p.side, m.m15),
+      hit_60m: predictionHit(p.side, m.m60),
+      hit_240m: predictionHit(p.side, m.m240),
+      evaluated_at: iso(t0),
+    }).eq("release_key", p.release_key);
+    evaluated++;
+  }
+  return { saved, evaluated };
 }
 
 // ---------------------------------------------------------------------------

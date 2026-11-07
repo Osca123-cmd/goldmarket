@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventBias, parseEconValue, releaseGroups, type NewsLike } from "../src/core/eventBias.ts";
+import { eventBias, parseEconValue, predictionHit, releaseGroups, releaseKey, releaseMoves, type NewsLike } from "../src/core/eventBias.ts";
 
 // paket NFP nyata 6 Nov 2026 (feed ForexFactory)
 const nfp = [
@@ -40,6 +40,18 @@ describe("perkiraan arah sebelum rilis", () => {
     const fomc = eventBias([{ title: "Federal Funds Rate", time_at: "2026-10-28T18:00:00Z", forecast: "4.00%", previous: "4.00%" }, { title: "FOMC Statement", time_at: "2026-10-28T18:00:00Z", forecast: null, previous: null }], [], before);
     expect(fomc.side).toBe("NETRAL");
     expect(fomc.scenario).toMatch(/hawkish SELL, dovish BUY/);
+  });
+
+  it("reaksi harga sesudah rilis dari candle M5 & penilaian prediksi", () => {
+    const t = Date.parse("2026-11-06T13:30:00Z") / 1000;
+    // harga turun 1 USD per bar M5 mulai bar rilis; bar terakhir sebelum rilis close 4062
+    const bars = Array.from({ length: 60 }, (_, i) => ({ time: t - 300 * 6 + i * 300, close: i < 6 ? 4062 : 4062 - (i - 5) }));
+    const m = releaseMoves(bars, t);
+    expect(m).toEqual({ base: 4062, m15: -3, m60: -12, m240: -48 });
+    expect(releaseMoves(bars.slice(0, 40), t)).toBeNull(); // 4 jam belum lewat
+    expect(releaseMoves(bars.filter((b) => b.time < t || b.time >= t + 3600), t)).toBeNull(); // tanpa bar sesudah rilis (pasar tutup)
+    expect([predictionHit("SELL", -12), predictionHit("BUY", -12), predictionHit("NETRAL", -12), predictionHit("SELL", 0)]).toEqual([true, false, null, null]);
+    expect(releaseKey(nfp)).toBe("2026-11-06T13:30:00.000Z|NFP");
   });
 
   it("paket rilis: waktu & topik sama digabung", () => {
