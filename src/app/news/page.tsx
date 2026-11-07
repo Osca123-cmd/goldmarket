@@ -5,7 +5,8 @@ import { AppShell } from "@/components/Shell";
 import { Card, Empty, ago, cx, useNow } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { useEconEvents, useNews, type EconEventRow, type KeyTopic, type NewsRow } from "@/lib/market";
-import { NextEvent, countdown, dayKey, hm } from "@/components/NextEvent";
+import { EventBiasChip, NextEvent, countdown, dayKey, hm, releaseOf } from "@/components/NextEvent";
+import { eventBias } from "@/core/eventBias";
 
 export default function Page() {
   return (
@@ -100,7 +101,7 @@ function NewsPage() {
         Label BUY/SELL XAUUSD adalah <b>arah fundamental menurut judul berita</b>, dibaca otomatis berbasis aturan (pendorong harga emas: suku bunga Fed, USD &amp; pasangan mata uang, imbal hasil, inflasi, data AS, geopolitik), lengkap dengan frasa pemicunya. Ini <b>bukan sinyal entry</b>: uji 20–27 Okt 2026 (87 judul berarah) menunjukkan arah ini <b>tidak memprediksi</b> gerak XAU 1–4 jam sesudah berita terbit (±52% benar, setara lempar koin) — berita sering terbit setelah harga bergerak. Pakai sebagai konteks, bukan pengganti setup. Bukan saran investasi.
       </div>
 
-      <NextEvent ev={next ?? null} now={now} tz={tz} />
+      <NextEvent ev={next ?? null} now={now} tz={tz} events={events} news={news} />
 
       <div className="flex gap-2">
         {(["news", "calendar"] as const).map((t) => (
@@ -150,7 +151,7 @@ function NewsPage() {
           )}
         </Card>
       ) : (
-        <Calendar events={events} error={evErr} now={now} tz={tz} />
+        <Calendar events={events} news={news} error={evErr} now={now} tz={tz} />
       )}
     </div>
   );
@@ -188,7 +189,15 @@ function NewsCard({ n, now }: { n: NewsRow; now: number }) {
   );
 }
 
-function Calendar({ events, error, now, tz }: { events: EconEventRow[] | null; error: string | null; now: number; tz: string }) {
+function Calendar({ events, news, error, now, tz }: { events: EconEventRow[] | null; news: NewsRow[] | null; error: string | null; now: number; tz: string }) {
+  // satu perkiraan arah per paket rilis (waktu & topik sama), ditampilkan di baris pertamanya
+  const firstOfRelease = new Set<string>();
+  const seen = new Set<string>();
+  for (const e of events ?? []) {
+    const k = `${e.time_at}|${e.topic}`;
+    if (!seen.has(k)) firstOfRelease.add(e.event_key);
+    seen.add(k);
+  }
   const groups = useMemo(() => {
     const m = new Map<string, EconEventRow[]>();
     for (const e of events ?? []) {
@@ -223,6 +232,11 @@ function Calendar({ events, error, now, tz }: { events: EconEventRow[] | null; e
                       <span className="min-w-0 flex-1 break-words font-medium">{e.title}</span>
                       <span className="num text-xs text-muted">F {e.forecast ?? "—"} · P {e.previous ?? "—"}</span>
                       <span className={cx("num w-full text-xs sm:w-24 sm:text-right", ms > 0 ? "text-gold" : "text-muted")}>{countdown(ms)}</span>
+                      {ms > 0 && firstOfRelease.has(e.event_key) && (
+                        <span className="flex w-full flex-wrap items-center gap-2 text-xs text-muted">
+                          Perkiraan arah: <EventBiasChip b={eventBias(releaseOf(e, events), news ?? [], now)} />
+                        </span>
+                      )}
                     </li>
                   );
                 })}
