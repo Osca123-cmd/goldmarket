@@ -1067,10 +1067,11 @@ const EURUSD_SOURCE = "td_eurusd";
  */
 async function refreshUsdBias(db: Db, t0: number) {
   let fetched = 0;
-  if (tdKey && isMarketOpenBySchedule(t0 * 1000)) {
+  if (tdKey) {
     const { data: last } = await db.from("market_candles").select("ts").eq("source", EURUSD_SOURCE).eq("timeframe", "M15").order("ts", { ascending: false }).limit(1).maybeSingle();
     const lastSec = sec(last?.ts);
-    if (lastSec == null || t0 - lastSec >= 45 * 60) {
+    // backfill pertama kapan saja (juga akhir pekan); pembaruan hanya saat pasar buka
+    if (lastSec == null || (isMarketOpenBySchedule(t0 * 1000) && t0 - lastSec >= 45 * 60)) {
       const c = await twelveData(tdKey, fetch, "EUR/USD").fetchCandles("M15", lastSec == null ? 400 : 8, t0);
       fetched = await upsertCandles(db, EURUSD_SOURCE, "M15", c);
     }
